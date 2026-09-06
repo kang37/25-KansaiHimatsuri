@@ -170,17 +170,16 @@ survey_df <- bind_rows(lapply(survey_list, as.data.frame, stringsAsFactors = FAL
 # （生年・世代表記の誤読が繰り返し発生していた）をやめ、まとめ側で人手整理
 # 済みの「協力者名×年齢」表を使う。54名（1〜5名/祭り）、年齢は52/54が
 # 「NN歳」の統一形式。
-# 残り2件は個人ではなく集団エントリー（まんどろ火祭り「その他（氏名・人数
-# 未記載）」、東光寺鬼会「複数名の保存会メンバー・上万願寺町役員等」）で、
-# 年齢欄が「50～70歳」のような範囲表記になっている。上限（70）は集団内の
-# 最年長者の年齢であって集団の代表値ではないため採用しない。範囲の中央値
-# （60）を集団全体を代表する値として採用する——単一の「NN歳」はそのまま
-# 使うので、複数値の場合のみ中央値を取る。
+# 【2026-09-06 再改訂】残り2件は個人ではなく集団エントリー（まんどろ火祭り
+# 「その他（氏名・人数未記載）」、東光寺鬼会「複数名の保存会メンバー・
+# 上万願寺町役員等」）で、氏名も特定できず年齢欄も「50～70歳」という範囲
+# 表記。図01は「個別協力者」の年齢分布を示す図であり、正体不明の集団を
+# 1個人として1点扱いすると分布の意味が変わってしまうため、中央値で代表
+# させるのではなく、この2件は協力者年齢の集計から除外する
+# （＝個人が特定できる52名のみを対象とする）。
 extract_age_simple <- function(x) {
-  nums <- as.numeric(str_extract_all(as.character(x), "[0-9]+")[[1]])
-  if (!length(nums)) return(NA_real_)
-  if (length(nums) == 1) return(nums)
-  mean(range(nums))
+  if (!str_detect(as.character(x), "^[0-9]+歳$")) return(NA_real_)
+  as.numeric(str_extract(x, "[0-9]+"))
 }
 
 # ------------------------------------------------------------------------------
@@ -834,7 +833,7 @@ p01a_age <- ggplot(age_long_f, aes(x = festival, y = age)) +
 # --- 右：植物資源種数（縦軸ラベルなし） ---
 p01b_div <- festival_profile %>%
   ggplot(aes(x = festival, y = n_resources)) +
-  geom_col(fill = "#4DAF4A", alpha = 0.85, width = 0.7) +
+  geom_col(fill = "gray40", alpha = 0.85, width = 0.7) +
   geom_text(aes(label = n_resources), hjust = -0.35, size = 2.9, color = "gray30") +
   coord_flip() +
   facet_pref +
@@ -935,8 +934,11 @@ print(as.data.frame(
 ))
 
 # --- 03a: 素 vs 母集団推定 --------------------------------------------------
+# 【2026-09-06改訂】全34分類群を表示する（従来はraw_n>=2でフィルタしていた）。
+# 1祭りのみで使われる植物は層化ブートストラップCIが不安定（区間が非常に
+# 広い、または単一府県の値に張り付く）ことに変わりはないため、そのまま
+# 解釈しないよう注意。
 prev_plot <- prev_tax %>%
-  filter(raw_n >= 2) %>%                     # 1祭りのみの植物は推定が不安定なため除外
   mutate(taxon = order_taxon(taxon))
 # coord_flipなしの横棒(geom_point+y=taxon)なので、上から見たい順に並べるには
 # 逆順にする（factorの最初の水準が下に来るため）。
@@ -957,10 +959,10 @@ p03a <- ggplot(prev_plot, aes(y = taxon)) +
   labs(
     title = "植物ごとの利用の広がり — 抽出の府県偏りを補正",
     subtitle = paste0("解析単位＝祭り×植物分類群（同一祭り内の部位重複は1件に集約） ／ ",
-                      "2祭り以上で使用された植物のみ\n",
+                      "全", nrow(prev_plot), "分類群\n",
                       "灰＝素の割合、赤＝母集団156件に事後層化した推定割合、横棒＝層化ブートストラップ95%区間"),
     x = "その植物を使用する火祭りの割合", y = NULL,
-    caption = "矢印は補正による移動方向。区間は府県あたり標本が小さいため広い。"
+    caption = "矢印は補正による移動方向。1祭りのみで使われる植物は区間が特に不安定。"
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
@@ -1557,9 +1559,10 @@ ggsave(file.path(OUTPUT_DIR, "14_resource_x_purpose.png"), p14_purpose,
 # ==============================================================================
 
 # ==============================================================================
-# 図15: 文化的関鍵種（Cultural Keystone Species）
-#   x軸 = 出現頻度（祭り数）、y軸 = 代替可能性スコア平均
-#   右上ほど「多くの祭りで使われ、かつ代替不可」= 文化的関鍵種
+# keystone_df: 文化的関鍵種の指標データ（2026-09-06: 図としては削除。
+#   代替可能性×日常利用×調達方法の関係は図22で植物ごとに詳しく見られる
+#   ため、同じ情報を1枚のバブルチャートに圧縮した本図は不要と判断）。
+#   数値自体は keystone_species.csv として引き続き出力する。
 # ==============================================================================
 
 keystone_df <- resource_df %>%
@@ -1578,38 +1581,6 @@ keystone_df <- resource_df %>%
 
 cat("\n=== 文化的関鍵種候補（代替不可能性 × 出現頻度） ===\n")
 print(as.data.frame(keystone_df %>% arrange(desc(keystone_score))))
-
-p15_keystone <- keystone_df %>%
-  ggplot(aes(x = n_festivals, y = mean_subst, size = mean_embed)) +
-  # 背景ゾーン（右上 = 関鍵種ゾーン）
-  annotate("rect", xmin = 3.5, xmax = Inf, ymin = 2.4, ymax = Inf,
-           fill = "#FFF3CD", alpha = 0.6) +
-  annotate("text", x = 4, y = 3.05, label = "文化的関鍵種ゾーン",
-           hjust = 0, size = 3, color = "#856404", fontface = "italic",
-           family = "HiraginoSans-W3") +
-  geom_point(aes(color = mean_subst), alpha = 0.85) +
-  geom_text_repel(
-    aes(label = resource_norm), size = 3,
-    family = "HiraginoSans-W3", max.overlaps = 30
-  ) +
-  scale_color_gradient(low = "#74C476", high = "#D62728",
-                       name = "代替不可能性\n（平均スコア）") +
-  scale_size_continuous(range = c(2, 8), name = "調達嵌入度\n（平均スコア）") +
-  scale_x_continuous(breaks = 1:max(keystone_df$n_festivals)) +
-  scale_y_continuous(limits = c(0.8, 3.2), breaks = 1:3,
-                     labels = c("1\n代替可", "2\n代替困難", "3\n代替不可")) +
-  labs(
-    title = "文化的関鍵植物種（Cultural Keystone Species）",
-    subtitle = "右上ほど「広く使われ、かつ代替できない」文化的に不可欠な種",
-    x = "利用祭り数",
-    y = "代替可能性スコア（平均）"
-  ) +
-  theme_bw(base_family = "HiraginoSans-W3") +
-  theme(plot.title = element_text(face = "bold"),
-        legend.position = "right")
-
-ggsave(file.path(OUTPUT_DIR, "15_cultural_keystone_species.png"), p15_keystone,
-       width = 10, height = 7, dpi = 150)
 
 # ==============================================================================
 # 図16: 文化-生態嵌入度（調達方法の地域性）
@@ -2338,10 +2309,11 @@ print(as.data.frame(sample_22 %>% distinct(resource_taxon, taxon_label, n_fes, n
   arrange(match(resource_taxon, taxon_order_22))))
 
 set.seed(20260903)
-p22 <- ggplot(sample_22, aes(x = subst_score, y = daily_score, color = embed_label)) +
-  geom_jitter(width = 0.16, height = 0.16, size = 2.2, alpha = 0.85) +
+# 【2026-09-06改訂】調達方法による色分けを廃止（代替可能性×日常利用の
+# 分布そのものに集中させるため）。調達方法は図22b（後述）で別途扱う。
+p22 <- ggplot(sample_22, aes(x = subst_score, y = daily_score)) +
+  geom_jitter(width = 0.16, height = 0.16, size = 2.2, alpha = 0.7, color = "#2C7FB8") +
   facet_wrap(~ taxon_label, ncol = 6) +
-  scale_color_manual(values = embed_colors_22, name = "調達方法", drop = FALSE) +
   scale_x_continuous(limits = c(0.5, 3.5), breaks = 1:3,
                      labels = c("1
 代替可", "2
@@ -2361,14 +2333,13 @@ p22 <- ggplot(sample_22, aes(x = subst_score, y = daily_score, color = embed_lab
 ",
                       "パネルの見出しは（利用祭り数, レコード点数）。点は重なりを避けるため位置を微小にずらしている（ジッター）。
 ",
-                      "右上＝代替できず・日常利用が失われた祭礼専用資源。色＝その記録の調達方法（複数併記時は最も自給度の高い方法）"),
+                      "右上＝代替できず・日常利用が失われた祭礼専用資源"),
     x = "代替可能性", y = "日常利用"
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
         strip.text = element_text(size = 7.5),
-        axis.text = element_text(size = 7),
-        legend.position = "bottom")
+        axis.text = element_text(size = 7))
 
 n_panels <- n_distinct(sample_22$resource_taxon)
 ggsave(file.path(OUTPUT_DIR, "22_subst_daily_embed.png"), p22,
@@ -2470,100 +2441,99 @@ write.csv(res_pref$summary, file.path(OUTPUT_DIR, "embed_by_pref.csv"),
 write.csv(res_taxon$summary, file.path(OUTPUT_DIR, "embed_by_plant.csv"),
           row.names = FALSE, fileEncoding = "UTF-8")
 
-# ==============================================================================
-# 図23c: 同じ植物が府県によって調達方法が変わるか
-# ------------------------------------------------------------------------------
-# 23a・23bは「府県別」「植物別」を別々に周辺化した分布だった。ここではその
-# 交差＝「ある県のある植物は主にどう調達されるか、他県と明確に違うか」を
-# 直接見る。1つの植物について、それが記録された複数の府県を並べて比較する
-# （＝植物ごとに小図を作り、その中で府県別のスタック棒を描く）。
-#
-# 対象は2府県以上で記録がある14分類群（1府県のみの植物は「県差」を
-# 定義できないため対象外。単一府県のみの植物は embed_by_plant.csv 参照）。
-# 全パネルで府県の並び順を統一（PREF_ORDER）し、記録のない府県は空欄の
-# ままにする。これにより「京都・滋賀は自給側に、和歌山・奈良は購入側に
-# 偏る」といった、複数の植物にまたがる地理的パターンが見えるかどうかを
-# パネル間で見比べられるようにしている。
-# 小図の並びは県間の差（最大−最小の嵌入度平均）が大きい順。
-# ------------------------------------------------------------------------------
-
+# 2026-09-06: 図23c（同じ植物が府県によって調達方法が変わるか）は削除。
+# 府県の次元を外すと23b（植物別の調達方法）と同じ内容になるため。
+# pref_x_plant（植物×府県別の嵌入度）はplant_x_landscape.csv等と同様の
+# 生データとして embed_pref_x_plant.csv に残す。
 pref_x_plant <- embed_records %>%
   group_by(resource_taxon, pref) %>%
   summarise(mean_embed = mean(embed_score), n = n(), .groups = "drop")
 
-multi_pref_taxa <- pref_x_plant %>%
-  count(resource_taxon, name = "n_pref") %>%
-  filter(n_pref >= 2)
+write.csv(
+  pref_x_plant %>% arrange(resource_taxon, desc(mean_embed)),
+  file.path(OUTPUT_DIR, "embed_pref_x_plant.csv"),
+  row.names = FALSE, fileEncoding = "UTF-8"
+)
 
-cat("
-=== 2府県以上で記録がある植物（図23c対象）", nrow(multi_pref_taxa), "分類群 ===
-")
+# ==============================================================================
+# 図28: 植物ごとの調達地の変化（結果5「調達地の変化」）
+# ------------------------------------------------------------------------------
+# change_cat（1=変化なし／2A=以前より近い／2B=以前より広い／3=使用停止）を
+# これまで一度も可視化していなかったため新設する。
+# 【現在使われていない資源も含める】主分析（resource_df）は current_use==1
+# に絞っているが、この図は「資源基盤がどう変容したか」を見るものなので
+# 使用停止（＝discontinued_resources.csvの13件）も対象に含める必要がある。
+# そのためここだけ resource_df_full（current_useで絞る前）を使う。
+# 対象は2記録以上でchange_catが記録された17分類群。植物の並びは
+# TAXON_ORDERではなく「変化が大きい順」（以前より広い＋使用停止の割合が
+# 高い順）——この図の主題そのものが変化の大きさなので、生活形順より
+# 変化順の方が読みやすい。
+# ------------------------------------------------------------------------------
 
-taxon_spread <- pref_x_plant %>%
-  filter(resource_taxon %in% multi_pref_taxa$resource_taxon) %>%
+CHANGE_PAL <- c(
+  "以前より近い" = "#1A6A1A",  # 調達が身近になった＝改善
+  "変化なし"     = "#BDBDBD",  # 中立
+  "以前より広い" = "#FD8D3C",  # 遠方化＝負荷増
+  "使用停止"     = "#D62728"   # 使用停止＝最も深刻
+)
+CHANGE_LEVELS <- names(CHANGE_PAL)
+
+change_records <- resource_df_full %>%
+  filter(!is.na(change_cat)) %>%
+  mutate(change_cat = factor(as.character(change_cat), levels = CHANGE_LEVELS))
+
+change_denom <- change_records %>%
+  count(resource_taxon, name = "n_rec") %>%
+  filter(n_rec >= 2)
+
+cat("\n=== 図28 除外（記録2件未満、", sum(!change_records$resource_taxon %in% change_denom$resource_taxon),
+    "件）===\n")
+
+change_summary <- change_records %>%
+  filter(resource_taxon %in% change_denom$resource_taxon) %>%
+  count(resource_taxon, change_cat, .drop = FALSE) %>%
+  left_join(change_denom, by = "resource_taxon") %>%
+  mutate(pct = n / n_rec)
+
+severity <- change_summary %>%
+  filter(change_cat %in% c("以前より広い", "使用停止")) %>%
   group_by(resource_taxon) %>%
-  summarise(spread = max(mean_embed) - min(mean_embed),
-            n_pref = n(), n_rec = sum(n), .groups = "drop") %>%
-  arrange(desc(spread))
-print(as.data.frame(taxon_spread %>%
-  mutate(spread = round(spread, 2))))
+  summarise(severity = sum(pct), .groups = "drop") %>%
+  right_join(change_denom, by = "resource_taxon") %>%
+  mutate(severity = replace_na(severity, 0)) %>%
+  arrange(severity)
 
-taxon_order_23c <- taxon_spread %>%
-  mutate(label = paste0(resource_taxon, "（差", sprintf("%.1f", spread), "）")) %>%
-  pull(label)
+cat("\n=== 植物ごとの調達地変化（変化が大きい順） ===\n")
+print(as.data.frame(severity %>% arrange(desc(severity)) %>%
+  transmute(resource_taxon, n_rec, 変化スコア = round(severity, 2))))
 
-plot_df_23c <- embed_records %>%
-  filter(resource_taxon %in% multi_pref_taxa$resource_taxon) %>%
-  left_join(taxon_spread, by = "resource_taxon") %>%
-  mutate(
-    taxon_label = paste0(resource_taxon, "（差", sprintf("%.1f", spread), "）"),
-    taxon_label = factor(taxon_label, levels = taxon_order_23c),
-    pref = factor(pref, levels = rev(PREF_ORDER))
-  ) %>%
-  count(taxon_label, pref, embed_label, .drop = FALSE) %>%
-  group_by(taxon_label, pref) %>%
-  mutate(n_pref_taxon = sum(n)) %>%
-  ungroup() %>%
-  filter(n_pref_taxon > 0) %>%
-  group_by(taxon_label, pref) %>%
-  mutate(pct = n / sum(n)) %>%
-  ungroup()
+change_summary <- change_summary %>%
+  mutate(taxon_label = paste0(resource_taxon, "（", n_rec, "件）"),
+         taxon_label = factor(taxon_label,
+           levels = paste0(severity$resource_taxon, "（", severity$n_rec, "件）")))
 
-n_label_23c <- plot_df_23c %>% distinct(taxon_label, pref, n_pref_taxon)
-
-p23c <- ggplot(plot_df_23c, aes(x = pref, y = pct, fill = embed_label)) +
-  geom_col(position = "stack", width = 0.7) +
-  geom_text(data = n_label_23c,
-            aes(x = pref, y = 1.12, label = n_pref_taxon),
-            inherit.aes = FALSE, size = 2.6, color = "gray30") +
-  facet_wrap(~ taxon_label, ncol = 4) +
+p28 <- ggplot(change_summary, aes(x = taxon_label, y = pct, fill = change_cat)) +
+  geom_col(width = 0.7) +
   coord_flip() +
-  scale_x_discrete(drop = FALSE) +
-  scale_fill_manual(values = embed_pal, name = "調達方法") +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1.22),
-                     breaks = c(0, 0.5, 1)) +
+  scale_fill_manual(values = CHANGE_PAL, name = "調達地の変化", drop = FALSE) +
+  scale_y_continuous(labels = scales::percent) +
   labs(
-    title = "同じ植物でも府県によって調達方法は違うか",
-    subtitle = paste0("2府県以上で記録がある", nrow(multi_pref_taxa), "分類群。",
-                      "府県の並びは全パネル共通（PREF_ORDER）。数字＝その県でのレコード数
-",
-                      "小図は県間の差（嵌入度平均の最大−最小）が大きい順。",
-                      "記録のない県は空欄（＝欠測であって0ではない）"),
-    x = NULL, y = "植物資源レコードの割合"
+    title = "植物ごとの調達地の変化",
+    subtitle = paste0("2記録以上ある", nrow(change_denom), "分類群。現在使われていない資源（使用停止）も含む\n",
+                      "並びは変化が大きい順（「以前より広い」＋「使用停止」の割合が高い順）"),
+    x = NULL, y = "資源レコードの割合"
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
-        strip.text = element_text(size = 8),
+        panel.grid.major.y = element_blank(),
         legend.position = "bottom")
 
-ggsave(file.path(OUTPUT_DIR, "23c_embed_pref_x_plant.png"), p23c,
-       width = 12, height = ceiling(nrow(multi_pref_taxa) / 4) * 2.3 + 1.5, dpi = 150)
+ggsave(file.path(OUTPUT_DIR, "28_procurement_change_by_plant.png"), p28,
+       width = 9, height = max(5, nrow(change_denom) * 0.4), dpi = 150)
 
 write.csv(
-  pref_x_plant %>% filter(resource_taxon %in% multi_pref_taxa$resource_taxon) %>%
-    left_join(taxon_spread %>% select(resource_taxon, spread), by = "resource_taxon") %>%
-    arrange(desc(spread), resource_taxon, desc(mean_embed)),
-  file.path(OUTPUT_DIR, "embed_pref_x_plant.csv"),
+  change_summary %>% select(resource_taxon, n_rec, change_cat, n, pct),
+  file.path(OUTPUT_DIR, "procurement_change_by_plant.csv"),
   row.names = FALSE, fileEncoding = "UTF-8"
 )
 
@@ -2691,7 +2661,9 @@ landscape_records <- resource_df %>%
   rename(landscape_type = landscape_all) %>%
   mutate(pref = unname(FESTIVAL_PREF[festival]))
 
-taxon_order_24 <- landscape_records %>% count(resource_taxon, sort = TRUE) %>% pull(resource_taxon)
+# 2026-09-06: 植物の並びを出現頻度順からTAXON_ORDER（生活形）順に変更
+# （図03a/03b・図17bと同じ論理的順序に統一）。
+taxon_order_24 <- levels(order_taxon(landscape_records$resource_taxon))
 land_order_24  <- landscape_records %>% count(landscape_type, sort = TRUE) %>% pull(landscape_type)
 
 cat("
@@ -3100,6 +3072,55 @@ write_xlsx(
        "適用結果（全件）" = codebook_sheet3,
        "タイプ別件数（検算）" = codebook_sheet4),
   path = file.path(OUTPUT_DIR, "選定理由_コーディング仕様書.xlsx")
+)
+
+# ==============================================================================
+# 調達方法（嵌入度）コーディング仕様書（Excel）
+# ------------------------------------------------------------------------------
+# EMBED_LEVELS による3段階（嵌入度）コーディングの完全な仕様書。
+# 図22・図23で使われる嵌入度ラベルが「結果4 method_class の元カテゴリーを
+# どうグルーピングしたか」を示す。選定理由と異なり、こちらはキーワード
+# 推測ではなく元カテゴリー文字列との完全一致によるグルーピングである。
+#   シート1 対応表：元カテゴリー（結果4 method_class）→ 嵌入度スコア・ラベル
+#   シート2 判定ロジックの説明
+#   シート3 各カテゴリーの実際の記録数（検算用）
+# ==============================================================================
+
+embed_type_labels <- c("3" = "3 共同体が自ら採取・栽培",
+                       "2" = "2 地域内から無償で入手",
+                       "1" = "1 購入・地域外に依存")
+
+embed_codebook_sheet1 <- lapply(names(EMBED_LEVELS), function(lv) {
+  tibble(元カテゴリー = EMBED_LEVELS[[lv]], 嵌入度スコア = as.integer(lv))
+}) %>% bind_rows() %>%
+  mutate(ラベル = unname(embed_type_labels[as.character(嵌入度スコア)])) %>%
+  bind_rows(tibble(
+    元カテゴリー = c("現行調達なし", "調達方法不明"),
+    嵌入度スコア = NA_integer_,
+    ラベル = "（分類対象外＝NA）"
+  )) %>%
+  select(元カテゴリー, 嵌入度スコア, ラベル) %>%
+  arrange(desc(嵌入度スコア))
+
+embed_codebook_sheet2 <- tribble(
+  ~項目, ~説明,
+  "適用対象", "分析内容まとめ.xlsx 結果4「調達方法」の【 】カテゴリー（method_class）。結果4のカテゴリー自体は統制語彙で、キーワード推測ではなく元の文字列との完全一致でグルーピングする",
+  "複数併記の扱い", "1レコード内で調達方法が「／」区切りで複数併記される場合（例：「氏子・保存会採取／地域住民提供」）、code_embeddedness()はそのレコードが該当する複数カテゴリーのうち最も嵌入度スコアが高いもの（＝最も自給的な方法）を採用する",
+  "状態注記の除去", "カテゴリー文字列に付く（旧来）（推定）等の括弧注記は判定前に除去し、括弧を除いた本体でグルーピングする",
+  "対象外カテゴリー", "「現行調達なし」「調達方法不明」の2カテゴリーはどの嵌入度スコアにも対応しないためNAとする",
+  "図22での扱い", "2026-09-06以降、図22（代替可能性×日常利用の散布図）では調達方法による色分けを廃止した。調達方法は図16・図23a/23b・図28で別途扱う"
+)
+
+embed_codebook_sheet3 <- resource_df %>%
+  filter(!is.na(method_cat)) %>%
+  count(method_cat, name = "件数") %>%
+  arrange(desc(件数))
+
+write_xlsx(
+  list("対応表" = embed_codebook_sheet1,
+       "判定ロジック" = embed_codebook_sheet2,
+       "元カテゴリー別件数（検算）" = embed_codebook_sheet3),
+  path = file.path(OUTPUT_DIR, "調達方法_コーディング仕様書.xlsx")
 )
 
 # 図19は削除
