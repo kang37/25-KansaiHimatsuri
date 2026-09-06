@@ -35,6 +35,7 @@ library(ggplot2)
 library(forcats)
 library(ggrepel)   # install.packages("ggrepel") if needed
 library(patchwork) # 図01の左右並置に使用
+library(writexl)  # 選定理由コーディング仕様書の出力に使用
 
 # 2026-09-02 更新：30シート版（新規16祭り追加）に切替
 # 旧: DATA_PATH <- "data_raw/火祭の資源と組織調査結果.xlsx"  (14シート, 出力先 data_proc/)
@@ -168,13 +169,18 @@ survey_df <- bind_rows(lapply(survey_list, as.data.frame, stringsAsFactors = FAL
 # 【2026-09-06 改訂】原票の自由記述セルから正規表現で年齢を抜き出す方式
 # （生年・世代表記の誤読が繰り返し発生していた）をやめ、まとめ側で人手整理
 # 済みの「協力者名×年齢」表を使う。54名（1〜5名/祭り）、年齢は52/54が
-# 「NN歳」の統一形式。残り2件（範囲表記「50～70歳」等）のみ、範囲の上限を
-# 採用する簡単な数値抽出で足りる——原文を"推測"する必要はない。
-
+# 「NN歳」の統一形式。
+# 残り2件は個人ではなく集団エントリー（まんどろ火祭り「その他（氏名・人数
+# 未記載）」、東光寺鬼会「複数名の保存会メンバー・上万願寺町役員等」）で、
+# 年齢欄が「50～70歳」のような範囲表記になっている。上限（70）は集団内の
+# 最年長者の年齢であって集団の代表値ではないため採用しない。範囲の中央値
+# （60）を集団全体を代表する値として採用する——単一の「NN歳」はそのまま
+# 使うので、複数値の場合のみ中央値を取る。
 extract_age_simple <- function(x) {
   nums <- as.numeric(str_extract_all(as.character(x), "[0-9]+")[[1]])
   if (!length(nums)) return(NA_real_)
-  max(nums)
+  if (length(nums) == 1) return(nums)
+  mean(range(nums))
 }
 
 # ------------------------------------------------------------------------------
@@ -425,6 +431,47 @@ LANDSCAPE_PAL <- c(
   "庭園"       = "#DE77AE",
   "木材流通"   = "#8C6D31"
 )
+
+# ------------------------------------------------------------------------------
+# 植物分類群（taxon_kind）の表示順（図03a/03b・図17bで共有）
+# ------------------------------------------------------------------------------
+# 【2026-09-06 追加の理由】従来は出現頻度（w_prev等）でソートしていたが、
+# それだと近縁種・同じ生活形の植物が図の離れた位置に散らばってしまう
+# （例：アカマツとクロマツが遠く離れる）。生活形・分類群でまとめた順序に
+# 変更し、同系統の植物が隣り合って読めるようにする。
+#   草本・水辺（ヨシ原・湿地・荒地）→ 穀物・畑作物 → 竹・ササ →
+#   針葉樹（マツ科・ヒノキ科）→ 広葉樹・柴（低木含む）→ 蔓性 → その他
+# 実データに存在しない分類群が含まれていても実害はない（描画時に
+# intersect() で絞り込む）。新しい taxon_kind が増えた場合はここに追記する。
+TAXON_ORDER <- c(
+  # 草本・水辺
+  "ヨシ", "カヤ", "ススキ",
+  # 穀物・畑作物
+  "稲", "稲（もち米）", "稲（赤米）", "小麦", "菜種", "麻",
+  # 竹・ササ
+  "タケ類", "ササ",
+  # 針葉樹
+  "アカマツ", "クロマツ", "マツ類・タケ類・ウメ", "スギ", "ヒノキ",
+  # 広葉樹・柴（低木含む）
+  "クリ", "クロモジ", "コバノミツバツツジ", "サカキ", "シイノキ", "シキミ",
+  "ソヨゴ", "ツツジ", "ツバキ", "ヌルデ", "ハンノキ", "他の広葉樹類",
+  "雑木", "樹木（樹種不明）",
+  # 蔓性
+  "フジ", "ツツラフジ",
+  # その他（供物・装飾等）
+  "ヒオウギ", "吉祥草", "食材各種"
+)
+
+# resource_taxon の水準を TAXON_ORDER に沿って並べる共通ヘルパー
+# （実データにのみ存在し、TAXON_ORDERにない値は末尾に追加＝取りこぼし防止）
+order_taxon <- function(x) {
+  present <- unique(as.character(x))
+  ord <- intersect(TAXON_ORDER, present)
+  extra <- setdiff(present, TAXON_ORDER)
+  if (length(extra) > 0)
+    warning("TAXON_ORDER未登録の分類群: ", paste(extra, collapse = "、"))
+  factor(x, levels = c(ord, extra))
+}
 
 code_landscape <- function(x) {
   vapply(as.character(x), function(z) {
@@ -770,7 +817,7 @@ p01a_age <- ggplot(age_long_f, aes(x = festival, y = age)) +
                 aes(x = festival, ymin = mean_age, ymax = mean_age),
                 width = 0.6, color = "#444444", linewidth = 1.0,
                 inherit.aes = FALSE) +
-  geom_point(size = 3, alpha = 0.9, color = "#377EB8") +
+  geom_point(size = 3, alpha = 0.9, color = "black") +
   # 年齢の数値は点の脇ではなくパネル右端にまとめて表示（近い年齢の重なりを回避）
   geom_text(data = age_label_df, aes(x = festival, y = 99, label = age_label),
             hjust = 1, size = 2.9, color = "gray30", inherit.aes = FALSE) +
@@ -890,7 +937,10 @@ print(as.data.frame(
 # --- 03a: 素 vs 母集団推定 --------------------------------------------------
 prev_plot <- prev_tax %>%
   filter(raw_n >= 2) %>%                     # 1祭りのみの植物は推定が不安定なため除外
-  mutate(taxon = fct_reorder(taxon, w_prev))
+  mutate(taxon = order_taxon(taxon))
+# coord_flipなしの横棒(geom_point+y=taxon)なので、上から見たい順に並べるには
+# 逆順にする（factorの最初の水準が下に来るため）。
+prev_plot <- prev_plot %>% mutate(taxon = factor(taxon, levels = rev(levels(taxon))))
 
 p03a <- ggplot(prev_plot, aes(y = taxon)) +
   geom_errorbar(aes(xmin = lo, xmax = hi), orientation = "y", width = 0,
@@ -936,7 +986,7 @@ p03b <- ggplot(pref_prev, aes(x = pref, y = resource_taxon, fill = prev)) +
   geom_tile(color = "white", linewidth = 0.5) +
   geom_text(aes(label = ifelse(n > 0, paste0(n, "/", n_sample), "")),
             size = 2.8, color = "gray20", family = "HiraginoSans-W3") +
-  scale_fill_gradient(low = "#F7FBFF", high = "#08519C",
+  scale_fill_gradient(low = "white", high = "#08519C",
                       labels = scales::percent, name = "府県内の利用率") +
   labs(title = "府県別の植物利用率",
        subtitle = paste0("セル内は「使用した祭り数／その府県の調査祭り数」。\n",
@@ -1709,69 +1759,88 @@ p17a <- reason_share %>%
 ggsave(file.path(OUTPUT_DIR, "17a_reason_types_overall.png"), p17a,
        width = 9, height = 6, dpi = 150)
 
-# --- 17b: 資源グループごとの理由構成（ウェイト付き）-------------------------
-# 【植物カテゴリーの出典】分析内容まとめ.xlsx 結果3 の資源グループ9列。
-#   スクリプト側の normalize_taxon() ではなく、まとめの分類をそのまま使う。
-#   ススキは結果3の時点で「ヨシ・カヤ・ススキ類」に含まれる。
+# --- 17b: 植物（個別分類群）ごとの理由構成（ウェイト付き）-------------------
+# 【2026-09-06 改訂】結果3の粗い資源グループ（9分類）ではなく、taxon_kind
+#   （人手コード済みの個別植物、TAXON_ORDERで表示順を統一）を行に使う。
+#   記録数2件未満の分類群は割合が不安定なため除外する。
 # 【選定理由】結果2「植物の選定理由（要点）」に code_reason() の10類型を適用。
+# 【着色】行ごとに割合の高い上位3セルだけをグラデーションで着色する
+#   （固定の分位点しきい値だと行によって着色数がばらつくため、順位方式に
+#   変更）。0%のセルは白、上位3に入らない非0セルは薄灰にして区別する。
 
-reason_long_mt <- plant_festival_mt %>%
+REASON_MIN_N <- 2
+
+reason_long <- plant_festival %>%
   filter(!is.na(reason_types)) %>%
   separate_rows(reason_types, sep = "\\|") %>%
   rename(rtype = reason_types) %>%
   mutate(rlabel = factor(unname(REASON_LABELS[rtype]), levels = unname(REASON_LABELS)))
 
-mt_denom <- plant_festival_mt %>%
+taxon_denom <- plant_festival %>%
   filter(!is.na(reason_types)) %>%
-  group_by(taxon_matome) %>%
-  summarise(w_tot = sum(w), n_fes = n(), .groups = "drop")
+  group_by(resource_taxon) %>%
+  summarise(w_tot = sum(w), n_fes = n(), .groups = "drop") %>%
+  filter(n_fes >= REASON_MIN_N)
 
-reason_by_taxon <- reason_long_mt %>%
-  group_by(taxon_matome, rtype, rlabel) %>%
+reason_by_taxon <- reason_long %>%
+  filter(resource_taxon %in% taxon_denom$resource_taxon) %>%
+  group_by(resource_taxon, rtype, rlabel) %>%
   summarise(w_n = sum(w), .groups = "drop") %>%
-  left_join(mt_denom, by = "taxon_matome") %>%
+  left_join(taxon_denom, by = "resource_taxon") %>%
   mutate(share = w_n / w_tot,
-         taxon_label = paste0(taxon_matome, "（", n_fes, "祭り）"))
+         taxon_label = paste0(resource_taxon, "（", n_fes, "祭り）"))
 
-mt_order <- mt_denom %>% arrange(n_fes) %>% pull(taxon_matome)
-reason_by_taxon <- reason_by_taxon %>%
-  mutate(taxon_label = factor(taxon_label,
-    levels = unique(taxon_label[order(match(taxon_matome, mt_order))])))
+taxon_order_17b <- order_taxon(taxon_denom$resource_taxon)
+label_order_17b <- taxon_denom %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = levels(taxon_order_17b))) %>%
+  arrange(resource_taxon) %>%
+  mutate(taxon_label = paste0(resource_taxon, "（", n_fes, "祭り）")) %>%
+  pull(taxon_label)
 
-cat("\n=== 資源グループ（まとめ結果3）ごとの祭り数 ===\n")
-print(as.data.frame(mt_denom %>% arrange(desc(n_fes))))
+cat("\n=== 選定理由コーディング対象（植物別、n>=", REASON_MIN_N, "）===\n")
+print(as.data.frame(taxon_denom %>% arrange(desc(n_fes))))
 
-# 多重ラベルのため積み上げ棒だと合計が100%を超えて読みにくい。
-# 「その資源グループを使う祭りのうち、その理由を挙げた割合」をヒートマップで示す。
+# 「その植物を使う祭りのうち、その理由を挙げた割合」をヒートマップで示す。
 reason_grid <- expand_grid(
-  taxon_label = levels(reason_by_taxon$taxon_label),
+  taxon_label = label_order_17b,
   rlabel      = factor(unname(REASON_LABELS), levels = unname(REASON_LABELS))
 ) %>%
   left_join(reason_by_taxon %>% select(taxon_label, rlabel, share),
             by = c("taxon_label", "rlabel")) %>%
   mutate(share = ifelse(is.na(share), 0, share),
-         taxon_label = factor(taxon_label, levels = levels(reason_by_taxon$taxon_label))) %>%
-  # 着色はその資源グループの「特徴的な理由」だけに絞る。
-  # 行ごとに10類型の割合の75%分位点を求め、それを上回るセルのみ着色する。
+         taxon_label = factor(taxon_label, levels = rev(label_order_17b))) %>%
+  # 行ごとに上位3セルのみ着色対象とする
   group_by(taxon_label) %>%
-  mutate(q75 = quantile(share, 0.75, names = FALSE),
-         share_plot = ifelse(share > q75, share, NA_real_)) %>%
-  ungroup()
+  mutate(rank_in_row = rank(-share, ties.method = "min")) %>%
+  ungroup() %>%
+  mutate(cell_kind = case_when(
+    share == 0        ~ "zero",
+    rank_in_row <= 3   ~ "top",
+    TRUE               ~ "mid"
+  ))
 
-p17b <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label, fill = share_plot)) +
-  geom_tile(color = "white", linewidth = 0.5) +
+p17b <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label)) +
+  # 背景：0%セルは白、上位3に入らない非0セルは薄灰
+  geom_tile(data = ~ filter(.x, cell_kind == "zero"),
+            fill = "white", color = "white", linewidth = 0.5) +
+  geom_tile(data = ~ filter(.x, cell_kind == "mid"),
+            fill = "#F0F0F0", color = "white", linewidth = 0.5) +
+  # 前景：行ごとの上位3セルのみグラデーション着色（凡例はこの層から生成）
+  geom_tile(data = ~ filter(.x, cell_kind == "top"),
+            aes(fill = share), color = "white", linewidth = 0.5) +
   geom_text(aes(label = ifelse(share > 0, scales::percent(share, accuracy = 1), "")),
             size = 2.8, family = "HiraginoSans-W3",
-            color = ifelse(!is.na(reason_grid$share_plot) & reason_grid$share_plot > 0.5,
+            color = ifelse(reason_grid$cell_kind == "top" & reason_grid$share > 0.5,
                            "white", "gray20")) +
-  scale_fill_gradient(low = "#FDD8C0", high = "#B30000", na.value = "gray95",
+  scale_fill_gradient(low = "#FDD8C0", high = "#B30000",
                       labels = scales::percent, name = "その理由を挙げた割合") +
   labs(
-    title = "資源グループごとの選定理由の構成",
-    subtitle = paste0("資源グループは分析内容まとめ.xlsx 結果3 のコーディングによる\n",
-                      "セル＝そのグループを使う祭りのうちその理由が語られた割合",
+    title = "植物ごとの選定理由の構成",
+    subtitle = paste0("2祭り以上で理由が記録された", nrow(taxon_denom), "分類群。",
+                      "縦軸はTAXON_ORDER（生活形）順\n",
+                      "セル＝その植物を使う祭りのうちその理由が語られた割合",
                       "（行ごとの割合、府県ウェイト補正後）\n",
-                      "着色は行ごとの75%分位点を上回るセルのみ＝そのグループに特徴的な理由\n",
+                      "着色は行ごとの上位3セルのみ。白＝0%、薄灰＝上位3外の非0セル\n",
                       "1単位が複数類型を持つため行の合計は100%を超える"),
     x = NULL, y = NULL
   ) +
@@ -1782,7 +1851,7 @@ p17b <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label, fill = share_plot))
         legend.position = "bottom")
 
 ggsave(file.path(OUTPUT_DIR, "17b_reason_by_plant.png"), p17b,
-       width = 10, height = 6.5, dpi = 150)
+       width = 10, height = max(6.5, nrow(taxon_denom) * 0.42), dpi = 150)
 
 write.csv(
   plant_festival %>%
@@ -1921,20 +1990,44 @@ print(as.data.frame(
     arrange(desc(n_rec))
 ))
 
-p19b <- ggplot(use_reason, aes(x = rlabel, y = use_label, fill = p_cond)) +
-  geom_tile(color = "white", linewidth = 0.5) +
+# 【2026-09-06 改訂】着色を「行ごとの上位3セルのみ」に変更。0%は白、
+# 上位3外の非0セルは薄灰にして区別する（図17bと同じ方式）。
+# ＝このヒートマップの読み方：セルは「その用途（例：主要燃焼材）で使われる
+#   記録のうち、その理由が語られた割合」＝ P(理由|用途)。例えば主要燃焼材の
+#   行で「燃焼特性」列が49%なら、「主要燃焼材として使われる記録の49%で
+#   燃焼特性が選定理由に挙がっている」という意味（用途全体のうち49%が
+#   燃焼特性由来、ではない）。
+use_reason <- use_reason %>%
+  group_by(use_label) %>%
+  mutate(rank_in_row = rank(-p_cond, ties.method = "min")) %>%
+  ungroup() %>%
+  mutate(cell_kind = case_when(
+    p_cond == 0       ~ "zero",
+    rank_in_row <= 3   ~ "top",
+    TRUE               ~ "mid"
+  ))
+
+p19b <- ggplot(use_reason, aes(x = rlabel, y = use_label)) +
+  geom_tile(data = ~ filter(.x, cell_kind == "zero"),
+            fill = "white", color = "white", linewidth = 0.5) +
+  geom_tile(data = ~ filter(.x, cell_kind == "mid"),
+            fill = "#F0F0F0", color = "white", linewidth = 0.5) +
+  geom_tile(data = ~ filter(.x, cell_kind == "top"),
+            aes(fill = p_cond), color = "white", linewidth = 0.5) +
   geom_text(aes(label = ifelse(p_cond > 0,
                                scales::percent(p_cond, accuracy = 1), "")),
             size = 2.8, family = "HiraginoSans-W3",
-            color = ifelse(use_reason$p_cond > 0.55, "white", "gray20")) +
+            color = ifelse(use_reason$cell_kind == "top" & use_reason$p_cond > 0.55,
+                           "white", "gray20")) +
   scale_fill_gradient(low = "#FFF7EC", high = "#B30000",
                       labels = scales::percent, name = "その理由を挙げた割合") +
   labs(
     title = "利用方法と選定理由の関係",
     subtitle = paste0("利用方法は分析内容まとめ.xlsx 結果2 のカテゴリー",
                       "（記録数", USE_MIN_N, "件未満は除外）\n",
-                      "セル＝その利用方法で使われる記録のうちその理由が語られた割合",
-                      "（行ごとの割合、府県ウェイト補正後）\n",
+                      "セル＝P(理由｜用途)＝その利用方法で使われる記録のうちその理由が",
+                      "語られた割合（行ごとの割合、府県ウェイト補正後）\n",
+                      "着色は行ごとの上位3セルのみ。白＝0%、薄灰＝上位3外の非0セル\n",
                       "1記録が複数の理由を持つため行の合計は100%を超える"),
     x = NULL, y = NULL
   ) +
@@ -2654,7 +2747,8 @@ p24b <- ggplot(mat_24b, aes(x = landscape_type, y = resource_taxon, fill = n)) +
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
-        panel.grid = element_blank(),
+        panel.grid.major = element_line(color = "gray80", linewidth = 0.3),
+        panel.grid.minor = element_blank(),
         strip.text = element_text(size = 9),
         axis.text.x = element_text(angle = 40, hjust = 1, size = 6.5),
         axis.text.y = element_text(size = 6.5))
@@ -2917,6 +3011,95 @@ write.csv(
            mgmt_score, mgmt_label, mean_embed),
   file.path(OUTPUT_DIR, "topic_management_engagement.csv"),
   row.names = FALSE, fileEncoding = "UTF-8"
+)
+
+# ==============================================================================
+# 選定理由コーディング仕様書（Excel）
+# ------------------------------------------------------------------------------
+# code_reason()/REASON_RULES による10類型コーディングの完全な仕様書。
+# 選定理由（結果2「植物の選定理由（要点）」）はまとめ.xlsx側でもコード化
+# されていない唯一の主要自由記述項目であり、この帰納的コーディングの根拠を
+# 誰でも検証できるようにするための出力。
+#   シート1 コーディング表：タイプ・ラベル・定義・判定キーワード一覧
+#   シート2 判定ロジック：適用対象・判定単位・多重ラベルの扱い・限界
+#   シート3 適用結果（全件）：レコードごとの原文と付与タイプ
+#   シート4 タイプ別件数：検算用の単純集計
+# ==============================================================================
+
+reason_type_defs <- tribble(
+  ~type, ~jp_label, ~definition,
+  "burn",   "燃焼特性",       "燃えやすさ・火力・持続時間・油分・煙など、燃焼そのものに関わる性質",
+  "phys",   "物理・加工特性", "まっすぐさ・軽さ・強度・しなやかさ・太さ長さ等の寸法・加工しやすさなど、構造材としての物理的性質",
+  "sens",   "感覚・美的",     "色・香り・見た目・音・緑・清浄感・装飾性など、五感に訴える性質",
+  "avail",  "入手容易性",     "手に入りやすさ・地域に多い・身近・調達の容易さ",
+  "byprod", "生業副産物",     "農林業の副産物であること・裏作・間伐材・不要材の循環利用",
+  "trad",   "伝統・慣習",     "昔からの材料であること・伝統・由来・継承",
+  "symb",   "象徴・宗教",     "縁起・神聖さ・魔除け・奉納・豊穣の象徴・伝承との結び付き",
+  "subst",  "代替・制約",     "本命の資源が確保できない・高価・技術低下などによる代替選択（積極的選好ではない）",
+  "social", "社会的機能",     "子供の参加・世代継承・安全性・村同士の競い合いなど、資源の物理的性質以外の社会的機能",
+  "env",    "環境保全",       "水質浄化・環境保護政策・里山保全そのものを目的とする選択"
+)
+
+reason_kw_rows <- lapply(REASON_RULES, function(r) {
+  tibble(type = r[1], keywords = str_split(r[2], "\\|")[[1]])
+}) %>% bind_rows()
+
+codebook_sheet1 <- reason_type_defs %>%
+  left_join(reason_kw_rows %>% group_by(type) %>%
+              summarise(keyword_list = paste(keywords, collapse = " ／ ")),
+            by = "type") %>%
+  transmute(タイプコード = type, ラベル = jp_label, 定義 = definition,
+            判定キーワード = keyword_list) %>%
+  bind_rows(tribble(
+    ~タイプコード, ~ラベル, ~定義, ~判定キーワード,
+    "(前処理)", "―",
+    "原文が「不明」「理由なし」「未確認」で始まる場合は全類型NAとする",
+    "―",
+    "(誤検出回避)", "―",
+    "「田遊び」（農耕儀礼の名称）を「田儀礼」に置換してから判定する。socialタイプの「遊び」との誤マッチを防ぐため",
+    "―"
+  ))
+
+codebook_sheet2 <- tribble(
+  ~項目, ~説明,
+  "適用対象", "分析内容まとめ.xlsx 結果2「植物の選定理由（要点）」列（自由記述、まとめ側でもコード化されていない唯一の主要項目）",
+  "判定単位", "1レコード（祭り×資源名）の選定理由テキスト1件",
+  "判定方法", "10類型それぞれについて、対応するキーワード群のいずれかが原文に部分一致（str_detect、正規表現OR）すれば、そのタイプを付与する",
+  "多重ラベル", "1レコードが複数タイプに該当する場合はすべて付与する（排他的分類ではない）",
+  "該当なし", "定義された10類型のいずれのキーワードにも一致しない場合はNA（理由コーディングなし）として扱う",
+  "府県ウェイト", "図17a/17b・図19bではタイプの出現割合を府県の抽出率に応じた事後層化ウェイトで補正している。ウェイトの定義自体はこの表の対象外（pref_weights()参照）",
+  "限界", "キーワードは実際の原文から帰納的に作成した一覧であり、まとめ.xlsxが将来的に選定理由も統制語彙化した場合は本コーディングは不要になる。新しい表現パターンが今後の追加データで出現した場合、本表のキーワードでは拾えない可能性がある"
+)
+
+codebook_sheet3 <- resource_df %>%
+  filter(!is.na(reason_raw)) %>%
+  transmute(
+    祭り名 = festival,
+    植物分類群 = resource_taxon,
+    使用部位 = part,
+    選定理由_原文 = reason_raw,
+    付与タイプ = ifelse(is.na(reason_types), "(該当なし)",
+                    str_replace_all(reason_types, "\\|", " ／ ")),
+    付与タイプ_日本語 = ifelse(is.na(reason_types), "(該当なし)",
+      vapply(str_split(reason_types, "\\|"), function(ts)
+        paste(unname(REASON_LABELS[ts]), collapse = " ／ "), character(1)))
+  ) %>%
+  arrange(祭り名, 植物分類群)
+
+codebook_sheet4 <- resource_df %>%
+  filter(!is.na(reason_types)) %>%
+  separate_rows(reason_types, sep = "\\|") %>%
+  count(reason_types, name = "件数") %>%
+  left_join(reason_type_defs %>% select(type, jp_label), by = c("reason_types" = "type")) %>%
+  transmute(タイプコード = reason_types, ラベル = jp_label, 件数) %>%
+  arrange(desc(件数))
+
+write_xlsx(
+  list("コーディング表" = codebook_sheet1,
+       "判定ロジック" = codebook_sheet2,
+       "適用結果（全件）" = codebook_sheet3,
+       "タイプ別件数（検算）" = codebook_sheet4),
+  path = file.path(OUTPUT_DIR, "選定理由_コーディング仕様書.xlsx")
 )
 
 # 図19は削除
