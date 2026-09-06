@@ -122,151 +122,10 @@ parse_trend <- function(x) {
   )
 }
 
-# 年齢セルから協力者の年齢を抽出（1セルに複数名・自由記述が混在する）
-# ------------------------------------------------------------------------------
-# 【2026-09-02 改訂の理由】0830版では年齢欄の記入形式が多様化したため、
-# 単純な最初の数値の抜き出しでは誤りが生じていた：
-#   「田島氏2004年生まれ（2026年時点21～22歳）」→ 生年 2004 を年齢として拾う
-#   「個別年齢は未確認。中心メンバーは30代～70代…80歳目前」→ 30 を年齢として拾う
-#   「角田氏 64歳／西村氏 46歳。」→ 1セル内の2人目 46 を落とす
-# 方針：
-#   1. 「年齢は未確認」と明記されたセルは協力者個人の年齢なしとして扱う
-#   2. 「NN歳」形式があればそれを全て採用（生年・世代の数値を拾わない）
-#      範囲併記（「21～22歳」）は上限を採用
-#   3. 「歳」がない場合のみ、10〜110の範囲の裸の数値を年齢とみなす
-extract_ages <- function(x) {
-  s <- str_replace_all(as.character(x), "[\r\n]+", " ")
-  if (is.na(s) || str_trim(s) %in% c("", "NA", "NULL")) return(numeric(0))
-  if (str_detect(s, "年齢は未確認|年齢未確認")) return(numeric(0))
-  with_sai <- str_match_all(s, "([0-9]{1,3})\\s*歳")[[1]]
-  if (nrow(with_sai) > 0) {
-    v <- as.numeric(with_sai[, 2])
-  } else {
-    v <- as.numeric(str_extract_all(s, "[0-9]{1,3}")[[1]])
-  }
-  v <- v[!is.na(v) & v >= 10 & v <= 110]
-  v
-}
-
-# 資源名の正規化（表記ゆれ統一）
-normalize_resource <- function(x) {
-  x %>%
-    str_replace_all("（.*?）|\\(.*?\\)", "") %>%
-    str_replace_all("\\s+", "") %>%
-    str_replace_all("稲藁|稲わら|稲ワラ|いねわら", "稲わら") %>%
-    str_replace_all("ヨシ（葦）|ヨシ$|葦$", "ヨシ") %>%
-    str_replace_all("タケ$|竹$|枯れ竹.*|笹$|ササ$|竹・笹|タケ・笹", "タケ/竹") %>%
-    str_replace_all("ヒノキ.*", "ヒノキ") %>%
-    str_replace_all("アカマツ|赤松.*|マツ$|マツ・.*", "マツ") %>%
-    str_replace_all("菜種.*|ナタネ.*", "菜種殻") %>%
-    str_replace_all("スギ.*|杉.*", "スギ") %>%
-    str_replace_all("食材各種", "食材（各種）") %>%
-    str_replace_all("小麦の麦わら|麦わら", "麦わら") %>%
-    str_replace_all("柴：.*|柴木.*", "柴") %>%
-    str_replace_all("フジツル|ツツラフジ", "フジ・ツル類") %>%
-    str_replace_all("木の芯棒.*|杉丸太.*", "杉丸太") %>%
-    str_trim() %>%
-    canon_resource()
-}
-
-# 2026-09-02 追加：30シート版で新たに現れた表記ゆれの最終統合
-# （上の正規表現チェーンで拾い切れないものを辞書で一括統合）
-CANON_RESOURCE <- c(
-  # タケ類
-  "真タケ/竹" = "タケ/竹", "タケ類" = "タケ/竹", "ナヨタケ/竹" = "タケ/竹",
-  "竹・タケ/竹" = "タケ/竹",
-  # 稲わら・わら製品
-  "藁縄" = "稲わら", "わら縄" = "稲わら", "稲わら縄" = "稲わら",
-  "もちわら" = "稲わら", "稲わら・縄・ムシロ・藁製品" = "稲わら",
-  # 麦わら（「小麦ワラ」はカタカナ表記のため上のルールで拾えない）
-  "小麦ワラ" = "麦わら", "小麦わら" = "麦わら",
-  # ススキ・カヤ
-  "ススギ" = "ススキ", "すすぎ" = "ススキ", "茅" = "カヤ",
-  # フジ・ツル類
-  "藤" = "フジ・ツル類", "藤蔓" = "フジ・ツル類", "フジ" = "フジ・ツル類",
-  # その他の同義語
-  "椎木" = "シイ", "苧殻" = "麻ガラ", "麻ロープ" = "麻縄",
-  # 肥松＝ジン（樹脂化したマツ材）。樹種名（アカマツ・クロマツ）を問わず統合
-  "肥松" = "肥松/ジン", "クロマツの肥松" = "肥松/ジン", "マツのジン" = "肥松/ジン",
-  # マツの葉
-  "マツの枝・マツの葉" = "マツの葉", "マツの松葉" = "マツの葉",
-  # 非植物資材（下流で除外する）
-  "綿タオル" = "非植物資材", "古布・タオル" = "非植物資材",
-  "アルミ製升・灯油" = "非植物資材"
-)
-
-canon_resource <- function(x) {
-  hit <- x %in% names(CANON_RESOURCE)
-  x[hit] <- unname(CANON_RESOURCE[x[hit]])
-  x
-}
+# 【2026-09-06】協力者年齢の抽出は「受访者信息」シート（extract_age_simple）に一本化。旧 extract_ages() は原票の自由記述向けだったため廃止。
 
 # ------------------------------------------------------------------------------
-# 資源名 → 植物分類群（タクソン）への集約
-# ------------------------------------------------------------------------------
-# 【2026-09-02 追加の理由】
-# 0830版の調査票は資源名を「樹種＋部位・形態」で細分して記録している
-# （例：ヒノキの丸太／ヒノキの薪／ヒノキの葉／ヒノキのかんなくず）。
-# 「植物資源の種類数」を数えるには部位を落として分類群に集約する必要がある。
-# ※ 部位別の細かさが必要な分析では resource_norm（記録どおり）を使うこと。
-TAXON_RULES <- list(
-  c("非植物資材",        "アルミ|灯油|タオル|古布|綿"),
-  c("松竹梅（飾り）",    "松竹梅"),
-  c("マツ",              "アカマツ|クロマツ|マツ|肥松|ジン|赤松"),
-  c("ヒノキ",            "ヒノキ|檜"),
-  c("スギ",              "スギ|杉"),
-  c("タケ/ササ類",       "タケ|竹|ササ|笹"),
-  c("イネ（稲わら）",    "稲ワラ|稲わら|稲藁|藁縄|わら縄|もちわら|もち米|赤米|稲穂|^稲"),
-  c("ムギ（麦わら）",    "小麦|麦わら|麦ワラ"),
-  c("ナタネ（菜種ガラ）","菜種|ナタネ"),
-  c("ヨシ",              "ヨシ|葦"),
-  # ススキとカヤ（茅）は同一の資源カテゴリーとして扱う（2026-09-03）。
-  #   ・「茅（カヤ）」は屋根葺き用の草本の総称で、その主体がススキ。
-  #     吉祥草寺の調達地記述も「葛城山周辺の草地・ススキ状の茅原」とあり、
-  #     同じものを指している。
-  #   ・6件すべて調達地の景観が「荒地」（一部「湿地 荒地」）で一致。
-  #   ・利用方法も燃焼材・充填材・化粧材・装飾材と重なる。
-  #   ・分析内容まとめ.xlsx 結果3 も「ヨシ・カヤ・ススキ類」として同一列に置く
-  #     （ただし結果3はヨシも同じ列に含める。ヨシは景観が湿地で調達構造も
-  #      異なるため、ここでは分けたままにしている）。
-  c("カヤ・ススキ類",    "ススキ|ススギ|すすぎ|カヤ|^茅"),
-  c("アサ（麻）",        "麻ガラ|麻縄|麻ロープ|苧殻"),
-  c("フジ類",            "フジ|藤|ツツラフジ"),
-  c("ツツジ類",          "ツツジ|コバノミツバツツジ"),
-  c("クロモジ",          "クロモジ"),
-  c("ソヨゴ",            "ソヨゴ"),
-  c("ハンノキ",          "ハンノキ"),
-  c("シイ",              "シイ|椎"),
-  c("ヌルデ",            "ヌルデ"),
-  c("シキミ",            "シキミ"),
-  c("サカキ",            "サカキ|榊"),
-  c("ツバキ",            "ツバキ"),
-  c("ヒオウギ",          "ヒオウギ"),
-  c("クリ",              "クリ|栗"),
-  c("吉祥草",            "吉祥草"),
-  c("雑木・広葉樹類",    "雑木|広葉樹|^柴"),
-  c("食材（各種）",      "食材"),
-  c("樹種不明の木材",    "木の丸太|木樽|^薪$")
-)
-
-normalize_taxon <- function(x) {
-  v <- str_replace_all(as.character(x), "（.*?）|\\(.*?\\)", "")
-  v <- str_replace_all(v, "\\s+", "")
-  # 【重要】表記ゆれを規則適用の前に直す。
-  # 「ススギ」（ススキの誤記、三栖の火祭）は部分文字列に「スギ」を含むため、
-  # スギの規則に先に捕まってスギと誤分類されていた（2026-09-03 修正）。
-  v <- str_replace_all(v, "ススギ|すすぎ", "ススキ")
-  out <- rep(NA_character_, length(v))
-  for (r in TAXON_RULES) {
-    hit <- is.na(out) & !is.na(v) & str_detect(v, r[2])
-    out[hit] <- r[1]
-  }
-  out[is.na(out) & !is.na(v)] <- v[is.na(out) & !is.na(v)]  # 未分類はそのまま残す
-  out
-}
-
-# ------------------------------------------------------------------------------
-# 1. 全シート読み込み
+# 1. 全シート読み込み（祭りレベルの変数。まとめ.xlsxには無いため原票のまま）
 # ------------------------------------------------------------------------------
 
 sheet_ids <- excel_sheets(DATA_PATH)          # 読み込み用（原文のまま）
@@ -304,88 +163,100 @@ survey_df <- bind_rows(lapply(survey_list, as.data.frame, stringsAsFactors = FAL
   )
 
 # ------------------------------------------------------------------------------
-# 1b. 協力者年齢 — 長形式（複数協力者を個別に展開）
+# 1b. 協力者年齢 — 分析内容まとめ.xlsx「受访者信息」シートから読み込み
 # ------------------------------------------------------------------------------
+# 【2026-09-06 改訂】原票の自由記述セルから正規表現で年齢を抜き出す方式
+# （生年・世代表記の誤読が繰り返し発生していた）をやめ、まとめ側で人手整理
+# 済みの「協力者名×年齢」表を使う。54名（1〜5名/祭り）、年齢は52/54が
+# 「NN歳」の統一形式。残り2件（範囲表記「50～70歳」等）のみ、範囲の上限を
+# 採用する簡単な数値抽出で足りる——原文を"推測"する必要はない。
 
-age_long <- lapply(sheet_ids, function(sh) {
-  df <- read_excel(DATA_PATH, sheet = sh, col_names = FALSE)
-  age_row <- df[str_replace_all(as.character(df[[1]]), "\\s+", "") == "年齢", ]
-  if (nrow(age_row) == 0) return(NULL)
-  vals <- as.character(age_row[1, -1])
-  vals <- vals[!is.na(vals) & vals != "NA"]
-  ages <- unlist(lapply(vals, extract_ages))
-  if (length(ages) == 0) return(NULL)
-  data.frame(festival = str_trim(sh), age = ages)
-}) %>% bind_rows()
+extract_age_simple <- function(x) {
+  nums <- as.numeric(str_extract_all(as.character(x), "[0-9]+")[[1]])
+  if (!length(nums)) return(NA_real_)
+  max(nums)
+}
 
 # ------------------------------------------------------------------------------
 # 1c. 植物資源 — 分析内容まとめ.xlsx から読み込み
 # ------------------------------------------------------------------------------
-# 【2026-09-03 全面改訂】
-# 従来は原票の各シートの資源ブロックを直接パースし、調達方法・代替可能性・
-# 景観・日常利用・利用方法を正規表現で推定していた。原票の記述が自由記述中心で
-# あるため、調達方法の嵌入度は47%が未分類、景観は新規シートで分類不能という
-# 状態だった。分析内容まとめ.xlsx はこれらを人手でコード化済みなので、
-# 資源レベルの変数はすべて同ファイルを唯一の出典とする。
+# 【2026-09-06 全面改訂】
+# 分析内容まとめ.xlsx が再整理され、以下の点で「正規表現による推測」が
+# 不要になった：
+#   ・植物の種類・材質（taxon_kind）: 36分類が人手で確定済み。
+#     旧 normalize_taxon()/CANON_RESOURCE/TAXON_RULES による独自の正規表現
+#     グルーピングは不要になったため全廃した。
+#   ・使用部位等（part）: 資源名から部位を正規表現で分離する必要がなくなった。
+#   ・利用方法・代替可能性・調達方法・調達地の変化: いずれも「◯◯区分」列に
+#     分離済み（自由記述の「補足説明」と別列）。
+#   ・話題頻度・保全管理活動（結果6）: 唯一まだ「チェック選択肢＋自由記述」
+#     が同一セルに残っている（分離されていない）。code_topic()/code_mgmt()
+#     による先頭一致の抽出が引き続き必要（"推測"ではなく、統制語彙の
+#     先頭一致というだけなので誤読の余地はない）。
+#   ・選定理由（reason）: 自由記述のまま（意図的にコード化されていない）。
+#     10類型への帰納的コーディング（REASON_RULES）は今後も必要。
+#   ・調達地の景観（landscape）: 大部分は単一の統制語（二次林・人工林等）に
+#     なったが、約6/205行はなお「二次林 過去：…」のように後続の自由記述が
+#     付く。LANDSCAPE_VOCAB とのキーワード一致は残す必要がある。
 #
-# シート構成と対応する変数:
-#   結果1 祭り名×植物資源×日常利用の有無          → daily_raw
-#   結果2 植物資源名×使用祭り×利用方法×選定理由×代替可能性
-#                                                   → use_raw / reason_raw / subst_raw
-#   結果3 府県×祭り名×資源グループ10列            → FESTIVAL_PREF（府県の出典）
-#   結果4 祭り名×植物資源×調達方法×調達時期      → method_raw / timing_raw
-#   結果5 祭り名×植物資源×調達地の変化×調達地の景観
-#                                                   → change_raw / landscape_raw
+# 新たに追加された変数:
+#   現時点の祭り利用（1=有,0=無）: 過去には使われたが現在は使われていない
+#     資源が13件ある。本スクリプトの分析は「現在使われている資源」を
+#     対象とするため current_use == 1 に絞る。除外分は discontinued_resources
+#     として別途CSV出力する（資源基盤の変容を論じる際の追加材料）。
 #
-# 【シート間の突合上の注意】
-#   ・資源名の表記が完全には揃っていない（稲ワラ/稲わら、ススキ/ススギ、
-#     もちワラ/もち米の藁、ヒノキ枝/ヒノキの枝、アカマツのの薪/アカマツの薪）。
-#     matome_key() で吸収してから結合する。
-#   ・結果5 は祭り名がブロックの中央行に置かれており、fill() では復元できない。
-#     結果4 の (祭り, 資源) の並びに逐次照合して復元する（検証結果は下で出力）。
-#   ・行数はシートごとに異なる（結果1/2 = 155、結果4 = 158、結果5 = 157）。
-#     結果4 を軸に左結合し、欠測は下記の理由で正常：
-#       非植物資材3件（古布・タオル／アルミ製棒・灯油／綿タオル）は結果2になし
-#       嵯峨の代替試行2件と吉祥草（祭具には不使用）は結果1になし
-#       吉祥草は結果5にもなし
+# シートの並びが変わった点に注意：新設の「受访者信息」が先頭に挿入された
+# ため、旧結果1〜6は結果2〜7にシフトしている。読み違いを避けるため
+# 名前付きベクトルで固定する。
+MT_SHEET <- c(informant = 1, daily = 2, use = 3, pref = 4,
+             method = 5, landscape = 6, engagement = 7)
+
+# 非植物資材（結果1の植物の種類・材質に人手で記録されている）
+NONPLANT_TAXA <- c("アルミ・灯油", "ワタ（綿）", "布類（材質不明）")
 
 matome_clean <- function(x) str_squish(str_replace_all(as.character(x), "[\r\n]+", " "))
 
-# シート間結合用のキー（表記ゆれの吸収）
-matome_key <- function(x) {
-  x %>% matome_clean() %>%
-    str_replace_all("[（(].*?[）)]", "") %>%
-    str_replace_all("[[:space:]]", "") %>%
-    str_replace_all("ワラ", "わら") %>%
-    str_replace_all("ガラ", "がら") %>%
-    str_replace_all("のの", "の") %>%
-    str_replace_all("ススギ", "ススキ") %>%
-    str_replace_all("^もち米の藁$|^もちワラ$|^もちわら$", "もち米") %>%
-    str_replace_all("の", "")
-}
-
 read_matome <- function(i) suppressMessages(read_excel(MATOME_PATH, sheet = i, col_names = TRUE))
 
-mt1 <- read_matome(1) %>% rename(festival = 1, resource_raw = 2, daily_raw = 3) %>%
-  fill(festival) %>%
-  mutate(across(everything(), matome_clean), k = matome_key(resource_raw))
+# --- 0. 受访者信息（協力者×年齢）---
+mt0 <- read_matome(MT_SHEET["informant"]) %>%
+  rename(festival = 1, informant_name = 2, informant_role = 3,
+         age_raw = 4, source_cell = 5) %>%
+  mutate(across(c(festival, informant_name, informant_role, age_raw), matome_clean))
 
-mt2 <- read_matome(2) %>%
-  rename(resource_raw = 1, festival = 2, use_raw = 3, reason_raw = 4, subst_raw = 5) %>%
-  fill(resource_raw) %>%
-  mutate(across(everything(), matome_clean), k = matome_key(resource_raw))
+age_long <- mt0 %>%
+  mutate(age = vapply(age_raw, extract_age_simple, numeric(1))) %>%
+  filter(!is.na(age)) %>%
+  select(festival, age)
 
-mt3 <- read_matome(3) %>% rename(pref = 1, festival = 2) %>%
-  fill(pref) %>% mutate(across(c(pref, festival), matome_clean))
+# --- 1. 結果1（日常利用の有無 + 現時点の祭り利用）---
+mt1 <- read_matome(MT_SHEET["daily"]) %>%
+  rename(festival = 1, taxon_kind = 2, resource_raw = 3,
+         daily_class = 4, daily_note = 5, current_use = 6) %>%
+  mutate(across(c(festival, taxon_kind, resource_raw, daily_class, daily_note), matome_clean),
+         current_use = suppressWarnings(as.integer(current_use)))
+
+# --- 2. 結果2（利用方法・選定理由・代替可能性）---
+mt2 <- read_matome(MT_SHEET["use"]) %>%
+  rename(taxon_kind = 1, part = 2, festival = 3, use_class = 4, use_note = 5,
+         reason_raw = 6, subst_class = 7, subst_note = 8) %>%
+  mutate(across(c(taxon_kind, part, festival, use_class, use_note,
+                  reason_raw, subst_class, subst_note), matome_clean),
+         # 結合キー用：「稲穂」(結果2) と「穂」(結果4) の表記差のみ吸収する
+         # （もち米・赤米の2件。他に「稲」で始まる part 値はない）。
+         join_part = coalesce(str_replace(part, "^稲", ""), ""))
+
+# --- 3. 結果3（府県×資源グループ）---
+mt3 <- read_matome(MT_SHEET["pref"]) %>% rename(pref = 1, festival = 2) %>%
+  mutate(across(c(pref, festival), matome_clean))
 
 # 府県マッピングを結果3から確定させる
 FESTIVAL_PREF <- setNames(mt3$pref, mt3$festival)
+stopifnot(all(sheets %in% names(FESTIVAL_PREF)))
+stopifnot(all(FESTIVAL_PREF %in% PREF_ORDER))
 
-# --- 結果3 の資源グループ（まとめ側の植物カテゴリー分類）-------------------
-# 結果3 は 祭り × 資源グループ10列 のワイド表で、各セルに実際の資源名が
-# 空白区切りで入っている。これを (祭り, 資源名) → グループ の対応表に展開し、
-# まとめ由来の植物カテゴリーとして使う。
-# 「加工・非植物資材」列は植物ではないため対象外。
+# 結果3 の資源グループ（祭り×グループ10列、セルに資源名が空白区切り）を
+# (祭り, 資源名) → グループ の対応表に展開する。図17bで使用する粗い9分類。
 MATOME_TAXON_COLS <- c("稲・米・藁類", "麦・菜種類", "ヨシ・カヤ・ススキ類",
                        "タケ・ササ類", "マツ類", "スギ・ヒノキ類",
                        "その他樹木・柴類", "蔓・縄・繊維類", "その他植物・供物類")
@@ -397,106 +268,38 @@ taxon_matome_map <- mt3 %>%
   mutate(res_list = matome_clean(res_list)) %>%
   separate_rows(res_list, sep = "[[:space:]]+") %>%
   filter(res_list != "") %>%
-  mutate(k = matome_key(res_list)) %>%
-  distinct(festival, k, taxon_matome)
-stopifnot(all(sheets %in% names(FESTIVAL_PREF)))
-stopifnot(all(FESTIVAL_PREF %in% PREF_ORDER))
+  distinct(festival, res_list, taxon_matome)
 
-mt4 <- read_matome(4) %>%
-  rename(festival = 1, resource_raw = 2, method_raw = 3, timing_raw = 4) %>%
-  fill(festival) %>%
-  mutate(across(everything(), matome_clean), k = matome_key(resource_raw))
+# --- 4. 結果4（調達方法・調達時期）— 資源レコードの軸（スパイン）---
+mt4 <- read_matome(MT_SHEET["method"]) %>%
+  rename(festival = 1, taxon_kind = 2, part = 3,
+         method_class = 4, method_note = 5, timing_raw = 6) %>%
+  mutate(across(c(festival, taxon_kind, part, method_class, method_note), matome_clean),
+         join_part = coalesce(str_replace(part, "^稲", ""), ""))
+stopifnot(!anyDuplicated(paste(mt4$festival, mt4$taxon_kind, mt4$join_part)))
 
-mt5 <- read_matome(5) %>%
-  rename(festival = 1, resource_raw = 2, change_raw = 3, landscape_raw = 4) %>%
-  mutate(across(everything(), matome_clean), k = matome_key(resource_raw))
+# --- 5. 結果5（調達地の変化・景観）---
+# 結果4と行順・(祭り,植物の種類・材質)が完全一致することを確認済みのため、
+# 位置対応で結合する（キー一致による突合は不要）。
+mt5 <- read_matome(MT_SHEET["landscape"]) %>%
+  rename(festival = 1, taxon_kind = 2, part = 3,
+         change_class = 4, change_note = 5, landscape_raw = 6) %>%
+  mutate(across(c(festival, taxon_kind, part, change_class, change_note, landscape_raw),
+                matome_clean))
+stopifnot(nrow(mt4) == nrow(mt5),
+          all(mt4$festival == mt5$festival),
+          all(mt4$taxon_kind == mt5$taxon_kind))
 
-# --- 結果5 の祭り名を結果4 の並びから復元 ---
-mt5_spine <- mt4 %>% select(festival, k)
-mt5_fes <- rep(NA_character_, nrow(mt5)); .p <- 1L
-for (r in seq_len(nrow(mt5))) {
-  hit <- NA_integer_
-  for (q in .p:min(.p + 3L, nrow(mt5_spine)))
-    if (mt5_spine$k[q] == mt5$k[r]) { hit <- q; break }
-  if (!is.na(hit)) { mt5_fes[r] <- mt5_spine$festival[hit]; .p <- hit + 1L }
-}
-mt5$festival_est <- mt5_fes
-.lbl <- mt5 %>% filter(!is.na(festival), festival != "NA")
-cat("結果5の祭り復元 — 未復元:", sum(is.na(mt5$festival_est)),
-    "件 / ラベル不一致:", sum(.lbl$festival != .lbl$festival_est, na.rm = TRUE), "件\n")
-
-# --- 結果6 植物資源供給上の交流と生産保全活動（祭りレベル、1行=1祭り）---
-# 「話題」「管理活動」ともチェックボックス選択肢＋自由記述の構造。
-# 選択肢は統制語彙になっているので、先頭の一致でスコア化する。
-#   話題（グループ内でどれだけ話すか）:
-#     4 よくこの種について話す　3 時々話すことがある
-#     2 話題に上がるが詳しくは話さない　1 話題にあがらない、話さない
-#   管理活動（生産・保全がどこまで行われているか）:
-#     3 全面的に行われている（栽培・植栽を含む積極的生産）
-#     2 採取・管理が行われている（栽培はせず、採取・調達ネットワークの維持のみ。
-#       原文に「計画栽培は行っていない」等の明記が複数ある）
-#     1 行っていない
-TOPIC_LABELS <- c("1" = "話題にあがらない", "2" = "詳しくは話さない",
-                  "3" = "時々話す",         "4" = "よく話す")
-MGMT_LABELS  <- c("1" = "行っていない",
-                  "2" = "採取・管理のみ（栽培なし）",
-                  "3" = "全面的な生産（栽培・植栽あり）")
-
-code_topic <- function(x) case_when(
-  str_detect(x, "^□\\s*よくこの種について話す")             ~ 4L,
-  str_detect(x, "^□\\s*時々この種について話すことがある")   ~ 3L,
-  str_detect(x, "^□\\s*話題に上がるが詳しくは話さない")     ~ 2L,
-  str_detect(x, "^□\\s*話題にあがらない")                   ~ 1L,
-  TRUE ~ NA_integer_
-)
-code_mgmt <- function(x) case_when(
-  str_detect(x, "^□\\s*全面的に行われている")       ~ 3L,
-  str_detect(x, "^□\\s*採取・管理が行われている")   ~ 2L,
-  str_detect(x, "^□\\s*行っていない")               ~ 1L,
-  TRUE ~ NA_integer_
-)
-
-mt6 <- read_matome(6) %>%
-  rename(festival = 1, topic_raw = 2, mgmt_raw = 3) %>%
+# --- 6. 結果6（話題頻度・保全管理活動、祭りレベル）---
+# ここだけチェック選択肢＋自由記述が未分離のため、統制語彙の先頭一致で
+# スコア化する（コーディング表は下の code_topic()/code_mgmt() 定義を参照）。
+mt6 <- read_matome(MT_SHEET["engagement"]) %>%
+  rename(festival = 1, topic_class = 2, topic_note = 3,
+         mgmt_class = 4, mgmt_note = 5) %>%
   mutate(across(everything(), matome_clean))
 
-festival_engagement <- mt6 %>%
-  mutate(
-    pref        = factor(unname(FESTIVAL_PREF[festival]), levels = PREF_ORDER),
-    topic_score = code_topic(topic_raw),
-    mgmt_score  = code_mgmt(mgmt_raw),
-    topic_label = factor(unname(TOPIC_LABELS[as.character(topic_score)]),
-                         levels = unname(TOPIC_LABELS)),
-    mgmt_label  = factor(unname(MGMT_LABELS[as.character(mgmt_score)]),
-                         levels = unname(MGMT_LABELS))
-  )
-
-cat("\n=== 結果6 話題・管理活動のコード化 ===\n")
-cat("未分類 話題:", sum(is.na(festival_engagement$topic_score)),
-    " 管理活動:", sum(is.na(festival_engagement$mgmt_score)), "（各30件中）\n")
-
-# --- 4シートの統合（結果4を軸に）---
-resource_raw <- mt4 %>%
-  select(festival, resource_raw, k, method_raw, timing_raw) %>%
-  left_join(mt1 %>% select(festival, k, daily_raw), by = c("festival", "k")) %>%
-  left_join(mt2 %>% select(festival, k, use_raw, reason_raw, subst_raw),
-            by = c("festival", "k")) %>%
-  left_join(mt5 %>% select(festival = festival_est, k, change_raw, landscape_raw),
-            by = c("festival", "k")) %>%
-  left_join(taxon_matome_map, by = c("festival", "k")) %>%
-  select(-k)
-
-.unmapped <- resource_raw %>% filter(is.na(taxon_matome))
-if (nrow(.unmapped) > 0) {
-  cat("結果3の資源グループに対応しない記録:", nrow(.unmapped), "件\n")
-  print(as.data.frame(.unmapped %>% select(festival, resource_raw)))
-}
-
-cat("資源レコード:", nrow(resource_raw), "件 /",
-    n_distinct(resource_raw$festival), "祭り\n")
-
 # ------------------------------------------------------------------------------
-# コード化（分析内容まとめ.xlsx の統制語彙をスコアに変換）
+# コード化関数（分析内容まとめ.xlsx の統制語彙をスコアに変換）
 # ------------------------------------------------------------------------------
 
 # 先頭の全角/半角数字コードを取り出す（「２　ほとんどない」「2B　以前より広い」）
@@ -512,9 +315,9 @@ bracket_cat <- function(x) str_match(as.character(x), "^【([^】]+)】")[, 2]
 code_daily <- function(x) suppressWarnings(as.integer(lead_code(x)))
 
 # 代替可能性：1=代用できる, 2=ある程度代用できる, 3=代用できない
-#   コード4「代替用材料」は“その資源自体が他資源の代替として使われている”という
-#   別次元の情報であり、1〜3の順序尺度には乗らない。順序尺度は NA とし、
-#   is_substitute_material フラグで保持する。
+#   コード4「代替用材料」は"その資源自体が他資源の代替として使われている"
+#   という別次元の情報であり、1〜3の順序尺度には乗らない。順序尺度は NA とし、
+#   is_substitute_material フラグで保持する。「未確認」もNA（1件）。
 code_substitutability <- function(x) {
   v <- suppressWarnings(as.integer(lead_code(x)))
   ifelse(is.na(v) | v > 3, NA_integer_, v)
@@ -581,7 +384,8 @@ USE_GROUPS <- c(
   "化粧材" = "化粧・装飾系", "装飾材" = "化粧・装飾系", "造形材" = "化粧・装飾系",
   "結束材" = "結束材",
   "祭具材" = "祭具・供物系", "供物" = "祭具・供物系", "装束材" = "祭具・供物系",
-  "発煙材" = "その他機能", "防火材" = "その他機能", "非祭具" = "その他機能"
+  "発煙材" = "その他機能", "防火材" = "その他機能", "非祭具" = "その他機能",
+  "芯材（燃焼部）" = "燃焼材系", "被覆材" = "化粧・装飾系"
 )
 USE_GROUP_ORDER <- c("燃焼材系", "構造材系", "化粧・装飾系", "結束材",
                      "祭具・供物系", "その他機能")
@@ -600,7 +404,9 @@ code_use_status <- function(x) {
   )
 }
 
-# 調達地の景観（結果5）。統制語彙に含まれる語だけを拾う（後続の自由記述を除去）。
+# 調達地の景観（結果5）。大半は単一の統制語だが、なお約6/205行は
+# 「二次林 過去：…」のように後続の自由記述が付く。統制語彙に含まれる
+# 語だけを拾う（＝残る唯一のキーワード一致の必要箇所）。
 LANDSCAPE_VOCAB <- c("二次林", "人工林", "竹林", "神社林", "海岸防災林", "庭園",
                      "水田", "湿地", "畑", "荒地", "木材流通")
 
@@ -624,7 +430,6 @@ code_landscape <- function(x) {
   vapply(as.character(x), function(z) {
     if (is.na(z)) return(NA_character_)
     hit <- LANDSCAPE_VOCAB[str_detect(z, fixed(LANDSCAPE_VOCAB))]
-    # 「二次林 過去：…」のように後続文がある場合も、語彙に一致した順で拾う
     if (!length(hit)) return(NA_character_)
     ord <- order(vapply(hit, function(h) str_locate(z, fixed(h))[1, 1], numeric(1)))
     paste(hit[ord], collapse = "|")
@@ -632,9 +437,11 @@ code_landscape <- function(x) {
 }
 
 # ------------------------------------------------------------------------------
-# 選定理由の類型（結果2「植物の選定理由（要点）」に適用）
+# 選定理由の類型（結果2「植物の選定理由（要点）」に適用。唯一まだ純粋な
+# 自由記述として残っている列——意図的にコード化されていないため、
+# 帰納的な10類型コーディングは今後も必要）
 # ------------------------------------------------------------------------------
-# 156件の原文から帰納的に立てた10類型。1記録が複数類型を持つ。
+# 159件の原文から帰納的に立てた10類型。1記録が複数類型を持つ。
 #   burn   燃焼特性       燃えやすい・火力・持続時間・油分・煙
 #   phys   物理/加工特性  まっすぐ・軽い・強度・しなやか・加工しやすい・寸法
 #   sens   感覚/美的      色・香り・見た目・音・緑・清浄感・装飾性
@@ -677,36 +484,112 @@ code_reason <- function(x) {
   paste(ty, collapse = "|")
 }
 
+# 話題頻度（4段階）と保全管理活動（3段階）— 結果6のみ未分離のため必要
+TOPIC_LABELS <- c("1" = "話題にあがらない", "2" = "詳しくは話さない",
+                  "3" = "時々話す",         "4" = "よく話す")
+MGMT_LABELS  <- c("1" = "行っていない",
+                  "2" = "採取・管理のみ（栽培なし）",
+                  "3" = "全面的な生産（栽培・植栽あり）")
+
+code_topic <- function(x) case_when(
+  str_detect(x, "^□\\s*よくこの種について話す")             ~ 4L,
+  str_detect(x, "^□\\s*時々この種について話すことがある")   ~ 3L,
+  str_detect(x, "^□\\s*話題に上がるが詳しくは話さない")     ~ 2L,
+  str_detect(x, "^□\\s*話題にあがらない")                   ~ 1L,
+  TRUE ~ NA_integer_
+)
+code_mgmt <- function(x) case_when(
+  str_detect(x, "^□\\s*全面的に行われている")       ~ 3L,
+  str_detect(x, "^□\\s*採取・管理が行われている")   ~ 2L,
+  str_detect(x, "^□\\s*行っていない")               ~ 1L,
+  TRUE ~ NA_integer_
+)
+
+festival_engagement <- mt6 %>%
+  mutate(
+    pref        = factor(unname(FESTIVAL_PREF[festival]), levels = PREF_ORDER),
+    topic_score = code_topic(topic_class),
+    mgmt_score  = code_mgmt(mgmt_class),
+    topic_label = factor(unname(TOPIC_LABELS[as.character(topic_score)]),
+                         levels = unname(TOPIC_LABELS)),
+    mgmt_label  = factor(unname(MGMT_LABELS[as.character(mgmt_score)]),
+                         levels = unname(MGMT_LABELS))
+  )
+
+cat("\n=== 結果6 話題・管理活動のコード化 ===\n")
+cat("未分類 話題:", sum(is.na(festival_engagement$topic_score)),
+    " 管理活動:", sum(is.na(festival_engagement$mgmt_score)), "（各30件中）\n")
+
+# ------------------------------------------------------------------------------
+# 資源レコードの統合（結果4を軸に）
+# ------------------------------------------------------------------------------
+# 結果4=軸（159行）。結果1・結果5は結果4と行順・(祭り,taxon_kind)が一致する
+# ことを確認済みなので位置対応（bind_cols）で結合する——結果1には part 列が
+# なく、キー結合では同一(祭り,taxon_kind)内に複数部位がある場合に多重一致
+# してしまうため、位置対応が正しい。結果2のみ行順が異なる（資源名でソート
+# されている）ため、(祭り,taxon_kind,part) のキー結合を使う。
+stopifnot(nrow(mt1) == nrow(mt4), all(matome_clean(mt1$festival) == mt4$festival))
+
+resource_raw <- bind_cols(
+  mt4 %>% select(festival, taxon_kind, part, join_part, method_class, method_note, timing_raw),
+  mt1 %>% select(resource_orig = resource_raw, daily_class, daily_note, current_use)
+) %>%
+  left_join(mt2 %>% select(festival, taxon_kind, join_part, use_class, use_note,
+                           reason_raw, subst_class, subst_note),
+            by = c("festival", "taxon_kind", "join_part")) %>%
+  left_join(mt5 %>% select(festival, taxon_kind, part, change_class, change_note, landscape_raw),
+            by = c("festival", "taxon_kind", "part")) %>%
+  left_join(taxon_matome_map %>% rename(resource_orig = res_list),
+            by = c("festival", "resource_orig")) %>%
+  select(-join_part)
+
+.unmapped_use <- resource_raw %>% filter(is.na(use_class))
+cat("結果2（利用方法等）に対応しない記録:", nrow(.unmapped_use), "件",
+    if (nrow(.unmapped_use) > 0) paste0("（", paste(unique(.unmapped_use$taxon_kind), collapse = "、"), "）") else "", "\n")
+
+.unmapped_taxon <- resource_raw %>% filter(is.na(taxon_matome), !(taxon_kind %in% NONPLANT_TAXA))
+if (nrow(.unmapped_taxon) > 0) {
+  cat("結果3の資源グループに対応しない記録:", nrow(.unmapped_taxon), "件\n")
+  print(as.data.frame(.unmapped_taxon %>% select(festival, taxon_kind, resource_orig)))
+}
+
+cat("資源レコード:", nrow(resource_raw), "件 /",
+    n_distinct(resource_raw$festival), "祭り /",
+    n_distinct(resource_raw$taxon_kind), "分類群\n")
+
 # ------------------------------------------------------------------------------
 # 資源レベルの解析用データ
 # ------------------------------------------------------------------------------
-resource_df <- resource_raw %>%
+# resource_taxon は taxon_kind をそのまま使う（人手コード済みの正式分類、
+# 独自の正規表現グルーピングは行わない）。resource_norm は過去バージョンの
+# 「部位を分けたまま数えた名称」との互換のために残すが、現在は
+# resource_taxon と同一の値を持つエイリアスに過ぎない（結果4・結果5に
+# 部位別の重複がある場合の粒度差は resource_raw / part 列で見ること）。
+resource_df_full <- resource_raw %>%
   mutate(
-    resource_norm  = normalize_resource(resource_raw),
-    resource_taxon = normalize_taxon(resource_raw),
-    # landscape_all は「湿地|荒地」のように複数景観を持つ場合があるため、
-    # 生息地の集計では separate_rows() で展開して使う。
-    # landscape_norm は主景観（記載順の最初）。
+    resource_raw   = resource_orig,
+    resource_taxon = taxon_kind,
+    resource_norm  = taxon_kind,
     landscape_all  = code_landscape(landscape_raw),
     landscape_norm = str_replace(landscape_all, "\\|.*$", ""),
-    subst_score    = code_substitutability(subst_raw),
-    is_substitute_material = str_detect(replace_na(lead_code(subst_raw), ""), "^4$"),
-    embed_score    = code_embeddedness(method_raw),
-    method_cat     = bracket_cat(method_raw),
-    daily_score    = code_daily(daily_raw),
-    use_types      = code_use(use_raw),
-    use_status     = code_use_status(use_raw),
-    change_cat     = code_change(change_raw),
+    subst_score    = code_substitutability(subst_class),
+    is_substitute_material = str_detect(replace_na(lead_code(subst_class), ""), "^4$"),
+    embed_score    = code_embeddedness(method_class),
+    method_cat     = bracket_cat(method_class),
+    daily_score    = code_daily(daily_class),
+    use_types      = code_use(use_class),
+    use_status     = code_use_status(use_class),
+    change_cat     = code_change(change_class),
     reason_types   = vapply(reason_raw, code_reason, character(1))
   ) %>%
-  filter(
-    !is.na(resource_norm),
-    str_trim(resource_norm) != "",
-    resource_norm != "NA",
-    # 本分析は「植物資源」を対象とするため非植物資材を除外
-    resource_norm != "非植物資材",
-    resource_taxon != "非植物資材"
-  )
+  filter(!(taxon_kind %in% NONPLANT_TAXA))
+
+n_discontinued <- sum(resource_df_full$current_use == 0, na.rm = TRUE)
+cat("\n現時点で使われていない資源（current_use=0）:", n_discontinued,
+    "件 — discontinued_resources.csv に出力し、主分析からは除外\n")
+
+# 主分析は「現在使われている植物資源」を対象とする
+resource_df <- resource_df_full %>% filter(current_use == 1)
 
 cat("\n=== 分析内容まとめ由来のコード化の網羅率（植物資源", nrow(resource_df), "件）===\n")
 for (v in c("subst_score", "embed_score", "daily_score", "use_types",
@@ -2850,62 +2733,51 @@ write.csv(
 # 【図25の点の大きさについての確認】
 # 図25の点の大きさ（植物資源種数）は各祭り自身の distinct(resource_taxon) で
 # あり、他の祭りと合算した合計値ではない（1点＝1祭り、他祭りの値は混じらない）。
-# 30祭り分を単純に足すと134になるが、これは図25では使っていない。
+# 30祭り分を単純に足すと合計になるが、これは図25では使っていない。
 # 「祭りあたりの平均」が意味を持つのは、複数の祭りを束ねる単位＝府県のレベル
 # であるため、ここでは府県ごとに（その県の祭りの植物資源種数の単純平均）を示す。
 #
-# 分類群（taxon）ベースと、部位を分けたまま数えた名称（resource_norm）ベースの
-# 両方を示す：がんがら火祭り・まんどろ火祭りは複数の資源が同じ分類群（マツ・
-# イネ）に集約されるため、分類群ベースだと種数が少なく出る（例：がんがら
-# 火祭りは taxon=3 だが norm=6）。この差が大きい祭りが多い府県では、2本の
-# 棒の差も大きくなる。
+# 【2026-09-06 改訂】旧版は「分類群ベース」と「資源名ベース（部位を分けた
+# まま）」の2本を並べていた——独自の正規表現グルーピング（normalize_taxon）
+# が部位違いの資源を過度に統合するケース（例：がんがら火祭りのアカマツの薪＋
+# 肥松を同一taxonに統合）があり、両者の差を見せる意味があった。まとめ.xlsx
+# 側で植物の種類・材質（taxon_kind）が人手コード済みになった今、この2指標は
+# 同一の値になるため1本の棒に統合した。
 # ------------------------------------------------------------------------------
 
 div_by_pref <- resource_df %>%
   group_by(festival) %>%
-  summarise(n_taxon = n_distinct(resource_taxon),
-            n_norm  = n_distinct(resource_norm), .groups = "drop") %>%
+  summarise(n_taxon = n_distinct(resource_taxon), .groups = "drop") %>%
   mutate(pref = factor(unname(FESTIVAL_PREF[festival]), levels = PREF_ORDER)) %>%
   group_by(pref) %>%
-  summarise(n_festivals = n(),
-            mean_taxon = mean(n_taxon), mean_norm = mean(n_norm),
-            .groups = "drop") %>%
+  summarise(n_festivals = n(), mean_taxon = mean(n_taxon), .groups = "drop") %>%
   arrange(desc(mean_taxon))
 
 cat("
 === 府県別 平均植物資源種数（祭りあたり） ===
 ")
-print(as.data.frame(div_by_pref %>%
-  mutate(mean_taxon = round(mean_taxon, 2), mean_norm = round(mean_norm, 2))))
+print(as.data.frame(div_by_pref %>% mutate(mean_taxon = round(mean_taxon, 2))))
 
 p26 <- div_by_pref %>%
   mutate(pref = factor(pref, levels = rev(div_by_pref$pref))) %>%
-  pivot_longer(c(mean_taxon, mean_norm), names_to = "kind", values_to = "value") %>%
-  mutate(kind = factor(kind, levels = c("mean_norm", "mean_taxon"),
-                       labels = c("資源名ベース（部位を分けたまま）",
-                                  "分類群ベース（図01・図25で使用）"))) %>%
-  ggplot(aes(x = value, y = pref, fill = kind)) +
-  geom_col(position = position_dodge(width = 0.72), width = 0.65, alpha = 0.9) +
-  geom_text(aes(label = sprintf("%.1f", value)),
-            position = position_dodge(width = 0.72), hjust = -0.2, size = 3,
+  ggplot(aes(x = mean_taxon, y = pref)) +
+  geom_col(fill = "#08519C", width = 0.6, alpha = 0.9) +
+  geom_text(aes(label = sprintf("%.1f", mean_taxon)), hjust = -0.2, size = 3.2,
             family = "HiraginoSans-W3") +
-  geom_text(data = div_by_pref %>% mutate(pref = factor(pref, levels = rev(div_by_pref$pref))),
-            aes(x = -0.4, y = pref, label = paste0("n=", n_festivals)),
-            inherit.aes = FALSE, size = 2.8, color = "gray40", hjust = 1) +
-  scale_fill_manual(values = c("#BDBDBD", "#08519C"), name = NULL) +
+  geom_text(aes(x = -0.4, label = paste0("n=", n_festivals)),
+            size = 2.8, color = "gray40", hjust = 1, family = "HiraginoSans-W3") +
   scale_x_continuous(limits = c(-1.2, 6.5), breaks = 0:6) +
   labs(
     title = "府県別 平均植物資源種数（祭りあたり）",
-    subtitle = "県内の祭りごとの植物資源種数を単純平均。左端の n= はその県の祭り数",
+    subtitle = "県内の祭りごとの植物資源種数（taxon_kind、まとめ.xlsx人手コード）を単純平均。左端のn=はその県の祭り数",
     x = "祭りあたりの平均植物資源種数", y = NULL
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
-        legend.position = "bottom",
         panel.grid.major.y = element_blank())
 
 ggsave(file.path(OUTPUT_DIR, "26_mean_resources_by_pref.png"), p26,
-       width = 8.5, height = 4.5, dpi = 150)
+       width = 8, height = 4.5, dpi = 150)
 
 write.csv(div_by_pref, file.path(OUTPUT_DIR, "mean_resources_by_pref.csv"),
           row.names = FALSE, fileEncoding = "UTF-8")
@@ -3061,15 +2933,23 @@ write.csv(
 )
 
 write.csv(
-  resource_df %>% select(festival, resource_raw, resource_norm,
+  resource_df %>% select(festival, resource_raw, resource_taxon, part,
                          landscape_raw, landscape_all, landscape_norm,
-                         method_raw, method_cat, embed_score,
-                         timing_raw, change_raw, change_cat,
-                         use_raw, use_types, use_status,
-                         subst_raw, subst_score, is_substitute_material,
-                         daily_raw, daily_score,
+                         method_class, method_cat, embed_score,
+                         timing_raw, change_class, change_cat,
+                         use_class, use_types, use_status,
+                         subst_class, subst_score, is_substitute_material,
+                         daily_class, daily_score, current_use,
                          reason_raw, reason_types),
   file.path(OUTPUT_DIR, "resource_detail.csv"),
+  row.names = FALSE, fileEncoding = "UTF-8"
+)
+
+write.csv(
+  resource_df_full %>% filter(current_use == 0) %>%
+    select(festival, resource_taxon, resource_raw = resource_orig, part,
+           daily_class, daily_note, change_class, change_note),
+  file.path(OUTPUT_DIR, "discontinued_resources.csv"),
   row.names = FALSE, fileEncoding = "UTF-8"
 )
 
