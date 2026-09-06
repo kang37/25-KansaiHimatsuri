@@ -2251,124 +2251,103 @@ ggsave(file.path(OUTPUT_DIR, "21d_daily_vs_tek.png"), p21d_daily_tek,
        width = 9, height = 5, dpi = 150)
 
 # ==============================================================================
-# 図21e: 日常利用 × 府県
+# 図21e: 植物ごとの日常利用
 # ------------------------------------------------------------------------------
-# 21a〜21dは全体・代替可能性・植物別・選定理由との関係を見てきたが、
-# 府県別の日常利用の違いは未確認だった。図23a等と同じ方針で府県ウェイトは
-# 適用しない（観測された標本の記述であり、母集団への一般化ではないため）。
-# 府県の並びは「日常的に使う＋ほとんどない」の割合が高い順（日常利用が
-# 残っている県が上に来る）。
+# daily_score は欠測なし（143件全レコード）のため全34分類群を表示する。
+# 図28（調達地の変化）と同じ発想で「その状態がどれだけ残っているか」を
+# 主題とする図なので、並びはTAXON_ORDER（生活形）ではなく日常利用の
+# 残存度順（平均スコアが低い＝日常利用が残っている植物が上）にする。
 # ==============================================================================
 
-daily_pref <- resource_df %>%
+daily_by_taxon <- resource_df %>%
   filter(!is.na(daily_score)) %>%
-  mutate(pref = factor(unname(FESTIVAL_PREF[festival]), levels = PREF_ORDER),
-         daily_label = factor(
-           case_when(daily_score == 1 ~ "1 日常的に使う",
-                     daily_score == 2 ~ "2 ほとんどない",
-                     TRUE             ~ "3 全くない"),
-           levels = daily_label_lv))
+  mutate(daily_label = factor(
+    case_when(daily_score == 1 ~ "1 日常的に使う",
+              daily_score == 2 ~ "2 ほとんどない",
+              TRUE             ~ "3 全くない"),
+    levels = daily_label_lv))
 
-pref_retain <- daily_pref %>%
-  count(pref, daily_label, .drop = FALSE) %>%
-  group_by(pref) %>%
-  mutate(n_tot = sum(n), pct = n / n_tot) %>%
-  ungroup()
+taxon_retain <- daily_by_taxon %>%
+  group_by(resource_taxon) %>%
+  summarise(mean_daily = mean(daily_score), n_rec = n(), .groups = "drop") %>%
+  arrange(mean_daily)
 
-pref_order_21e <- pref_retain %>%
-  filter(daily_label != "3 全くない") %>%
-  group_by(pref) %>%
-  summarise(retain = sum(pct), .groups = "drop") %>%
-  arrange(retain) %>%
-  pull(pref)
+cat("\n=== 植物ごとの日常利用（平均スコア昇順＝残存度が高い順） ===\n")
+print(as.data.frame(taxon_retain %>% mutate(mean_daily = round(mean_daily, 2))))
 
-cat("\n=== 府県別 日常利用の残存率（1+2の割合） ===\n")
-print(as.data.frame(pref_retain %>% filter(daily_label != "3 全くない") %>%
-  group_by(pref) %>% summarise(残存率 = round(sum(pct), 2), n = unique(n_tot))))
+taxon_daily_summary <- daily_by_taxon %>%
+  count(resource_taxon, daily_label, .drop = FALSE) %>%
+  filter(resource_taxon %in% taxon_retain$resource_taxon) %>%
+  left_join(taxon_retain, by = "resource_taxon") %>%
+  mutate(pct = n / n_rec,
+         taxon_label = paste0(resource_taxon, "（", n_rec, "件）"),
+         taxon_label = factor(taxon_label,
+           levels = rev(paste0(taxon_retain$resource_taxon, "（", taxon_retain$n_rec, "件）"))))
 
-p21e_daily_pref <- pref_retain %>%
-  mutate(pref = factor(pref, levels = pref_order_21e)) %>%
-  ggplot(aes(x = pref, y = pct, fill = daily_label)) +
-  geom_col(position = "stack", width = 0.65) +
-  geom_text(data = pref_retain %>% distinct(pref, n_tot) %>%
-              mutate(pref = factor(pref, levels = pref_order_21e)),
-            aes(x = pref, y = 1.06, label = paste0("n=", n_tot)),
-            inherit.aes = FALSE, size = 2.8, color = "gray30") +
+p21e_daily_taxon <- ggplot(taxon_daily_summary, aes(x = taxon_label, y = pct, fill = daily_label)) +
+  geom_col(position = "stack", width = 0.72) +
   coord_flip() +
   scale_fill_manual(values = daily_colors, name = "日常利用") +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1.1)) +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0)) +
   labs(
-    title = "府県別 日常利用スコアの分布",
-    subtitle = "並びは「日常的に使う＋ほとんどない」の残存率が高い順。府県ウェイトなし（観測された標本の記述）",
-    x = NULL, y = "植物資源レコードの割合"
+    title = "植物ごとの日常利用",
+    subtitle = "全34分類群。並びは日常利用の残存度が高い順（平均スコア昇順）",
+    x = NULL, y = "資源レコードの割合"
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
         panel.grid.major.y = element_blank(),
         legend.position = "bottom")
 
-ggsave(file.path(OUTPUT_DIR, "21e_daily_by_pref.png"), p21e_daily_pref,
-       width = 8, height = 4.5, dpi = 150)
+ggsave(file.path(OUTPUT_DIR, "21e_daily_by_plant.png"), p21e_daily_taxon,
+       width = 8.5, height = max(6, nrow(taxon_retain) * 0.32), dpi = 150)
 
-write.csv(pref_retain, file.path(OUTPUT_DIR, "daily_use_by_pref.csv"),
+write.csv(taxon_daily_summary %>% select(resource_taxon, n_rec, daily_label, n, pct),
+          file.path(OUTPUT_DIR, "daily_use_by_plant.csv"),
           row.names = FALSE, fileEncoding = "UTF-8")
 
 # ==============================================================================
-# 図21f: 日常利用スコア × 現在の使用状況（現役／使用停止）
+# 図21f: 植物 × 府県別の日常利用
 # ------------------------------------------------------------------------------
-# 日常利用が失われた資源ほど、その後「使用停止」になりやすいか？という
-# 資源基盤の脆弱性の指標。現在使われていない資源（現時点の祭り利用=0）を
-# 含める必要があるため resource_df ではなく resource_df_full を使う
-# （図28と同じ理由）。
+# 図21eに府県の軸を加えたもの。多くのセルはレコード数が少ない（n=1が大半）
+# ため、府県別に小図を並べる方式（旧図23c的な発想）ではなく、平均スコアを
+# 一枚のヒートマップに載せる方式にする——図21eと同じ植物リスト・同じ並びを
+# 使うので、両図を並べて「全体でどうか」→「県ごとにどう内訳れるか」を
+# 追える。色は旧図21cと同じ緑（日常利用あり）〜赤（利用なし）の発散配色。
+# 府県ウェイトなし（観測された標本の記述）。
 # ==============================================================================
 
-daily_status <- resource_df_full %>%
-  filter(!is.na(daily_score)) %>%
-  mutate(
-    daily_label = factor(
-      case_when(daily_score == 1 ~ "1 日常的に使う",
-                daily_score == 2 ~ "2 ほとんどない",
-                TRUE             ~ "3 全くない"),
-      levels = daily_label_lv),
-    status_label = factor(ifelse(current_use == 1, "現役", "使用停止"),
-                          levels = c("現役", "使用停止"))
-  ) %>%
-  count(daily_label, status_label, .drop = FALSE) %>%
-  group_by(daily_label) %>%
-  mutate(n_tot = sum(n), pct = n / n_tot) %>%
-  ungroup()
+daily_pref_taxon <- daily_by_taxon %>%
+  mutate(pref = factor(unname(FESTIVAL_PREF[festival]), levels = PREF_ORDER)) %>%
+  filter(resource_taxon %in% taxon_retain$resource_taxon) %>%
+  group_by(resource_taxon, pref) %>%
+  summarise(mean_daily = mean(daily_score), n_rec = n(), .groups = "drop") %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = taxon_retain$resource_taxon))
 
-cat("\n=== 日常利用スコア別 使用停止の割合 ===\n")
-print(as.data.frame(daily_status %>% filter(status_label == "使用停止") %>%
-  transmute(daily_label, 使用停止件数 = n, 使用停止割合 = round(pct, 3), n = n_tot)))
-
-p21f_daily_status <- ggplot(daily_status, aes(x = daily_label, y = pct, fill = status_label)) +
-  geom_col(position = "stack", width = 0.55) +
-  geom_text(aes(label = ifelse(n > 0, paste0(n, "件"), "")),
-            position = position_stack(vjust = 0.5), size = 3.2, color = "white",
-            fontface = "bold", family = "HiraginoSans-W3") +
-  geom_text(data = daily_status %>% distinct(daily_label, n_tot),
-            aes(x = daily_label, y = 1.06, label = paste0("n=", n_tot)),
-            inherit.aes = FALSE, size = 2.8, color = "gray30") +
-  scale_fill_manual(values = c("現役" = "#BDBDBD", "使用停止" = "#D62728"), name = NULL) +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1.1)) +
+p21f_daily_pref_taxon <- ggplot(daily_pref_taxon, aes(x = pref, y = resource_taxon, fill = mean_daily)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = ifelse(n_rec > 1, sprintf("%.1f", mean_daily), as.character(mean_daily))),
+            size = 2.7, family = "HiraginoSans-W3",
+            color = ifelse(daily_pref_taxon$mean_daily >= 2.5, "white", "gray15")) +
+  scale_fill_gradient2(low = "#2CA02C", mid = "#FF7F0E", high = "#D62728",
+                       midpoint = 2, limits = c(1, 3),
+                       name = "日常利用スコア\n（平均、1=有 3=無）") +
+  scale_y_discrete(limits = rev(levels(daily_pref_taxon$resource_taxon))) +
   labs(
-    title = "日常利用スコア別 使用停止の割合",
-    subtitle = paste0("使用停止（現時点の祭り利用=0）の13件中12件が「日常利用=全くない」に集中。\n",
-                      "「ほとんどない（2）」からの使用停止は本データ上ゼロ"),
-    x = "日常利用スコア", y = "植物資源レコードの割合"
+    title = "植物 × 府県別の日常利用",
+    subtitle = paste0("図21eと同じ34分類群・同じ並び順。セルは平均スコア（多くはn=1）\n",
+                      "府県ウェイトなし（観測された標本の記述）"),
+    x = NULL, y = NULL
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
-        panel.grid.major.x = element_blank(),
-        legend.position = "bottom")
+        panel.grid = element_blank())
 
-ggsave(file.path(OUTPUT_DIR, "21f_daily_vs_discontinuation.png"), p21f_daily_status,
-       width = 7, height = 5.5, dpi = 150)
+ggsave(file.path(OUTPUT_DIR, "21f_daily_by_plant_and_pref.png"), p21f_daily_pref_taxon,
+       width = 9, height = max(6, nrow(taxon_retain) * 0.32), dpi = 150)
 
-write.csv(daily_status, file.path(OUTPUT_DIR, "daily_use_vs_discontinuation.csv"),
+write.csv(daily_pref_taxon, file.path(OUTPUT_DIR, "daily_use_by_plant_and_pref.csv"),
           row.names = FALSE, fileEncoding = "UTF-8")
-
 # ==============================================================================
 # 図22: 植物ごとの代替可能性 × 日常利用 × 調達方法（植物別小図）
 # ------------------------------------------------------------------------------
