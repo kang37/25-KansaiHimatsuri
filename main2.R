@@ -2020,6 +2020,50 @@ write.csv(
 )
 
 # ==============================================================================
+# 図19c: 植物 × 用途（利用方法）
+# ------------------------------------------------------------------------------
+# 図24a（植物×景観）と同じ作図規則：解析単位は資源レコード（use_long、
+# 1レコードが複数用途を持つ場合は展開済み）。件数の連続グラデーション
+# （多いほど濃い青、0件は白）、行=植物はTAXON_ORDER（生活形）順、
+# 列=用途は出現頻度順、府県ウェイトは適用しない（観測された標本の記述）。
+# ------------------------------------------------------------------------------
+
+taxon_order_19c <- levels(order_taxon(use_long$resource_taxon))
+use_order_19c   <- use_long %>% count(use_cat, sort = TRUE) %>% pull(use_cat)
+
+cat("\n=== 図19c 対象レコード:", nrow(use_long), "件（",
+    n_distinct(paste(use_long$festival, use_long$resource_raw)),
+    "件の資源レコードが複数用途のため展開）===\n")
+
+mat_19c <- use_long %>%
+  count(resource_taxon, use_cat) %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = rev(taxon_order_19c)),
+         use_cat = factor(use_cat, levels = use_order_19c))
+
+p19c <- ggplot(mat_19c, aes(x = use_cat, y = resource_taxon, fill = n)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = n), size = 2.8, family = "HiraginoSans-W3", color = "gray15") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
+                      name = "レコード数") +
+  labs(
+    title = "植物 × 用途（利用方法）",
+    subtitle = paste0("資源レコード", n_distinct(paste(use_long$festival, use_long$resource_raw)),
+                      "件。複数用途を持つ記録は両方に計上（合計は資源レコード数を超える）\n",
+                      "行はTAXON_ORDER（生活形）順、列は出現頻度順"),
+    x = NULL, y = NULL
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1))
+
+ggsave(file.path(OUTPUT_DIR, "19c_plant_x_use.png"), p19c,
+       width = 10, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.33), dpi = 150)
+
+write.csv(mat_19c %>% arrange(desc(n)), file.path(OUTPUT_DIR, "plant_x_use.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8")
+
+# ==============================================================================
 # 図20: 利用方法カテゴリー × 代替可能性
 #   松明内での植物の役割（燃焼材・構造材・化粧材・装飾材・結束材など）ごとに
 #   代替可能性スコアの分布を積み上げ比率バーで示す。
