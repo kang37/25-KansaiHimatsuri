@@ -380,6 +380,10 @@ METHOD_TYPE_LEVELS <- list(
   "⑤ 委託"       = c("地元農家委託栽培", "地域外農家委託栽培", "外部業者委託")
 )
 METHOD_TYPE_ORDER <- names(METHOD_TYPE_LEVELS)
+METHOD_TYPE_PAL <- setNames(
+  c("#6A0624", "#D71C2C", "#FDD2BC", "#6FAFD2", "#134B87"),
+  METHOD_TYPE_ORDER
+)
 
 code_method_type <- function(x) {
   cat_str <- bracket_cat(x)
@@ -2760,29 +2764,36 @@ method_type_records <- resource_df %>%
 taxon_method_order <- intersect(rev(levels(order_taxon(method_type_records$resource_taxon))),
                                  unique(method_type_records$resource_taxon))
 
+# 【2026-09-08改訂】x軸（coord_flip前はy軸）を0-100%に限定するため、
+# 記録数はバー右の余白ではなく行ラベルに埋め込む（図17b・19cと同じ方式）。
+taxon_n_23c <- method_type_records %>%
+  filter(resource_taxon %in% taxon_method_order) %>%
+  count(resource_taxon, name = "n_total")
+
+taxon_label_order_23c <- taxon_n_23c %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = taxon_method_order)) %>%
+  arrange(resource_taxon) %>%
+  mutate(taxon_label = paste0(resource_taxon, "（n=", n_total, "）")) %>%
+  pull(taxon_label)
+
 method_type_long <- method_type_records %>%
   count(resource_taxon, method_type, .drop = FALSE) %>%
   filter(resource_taxon %in% taxon_method_order) %>%
-  group_by(resource_taxon) %>%
-  mutate(n_total = sum(n), pct = n / n_total) %>%
-  ungroup() %>%
-  mutate(resource_taxon = factor(resource_taxon, levels = taxon_method_order))
+  left_join(taxon_n_23c, by = "resource_taxon") %>%
+  mutate(pct = n / n_total,
+         taxon_label = factor(paste0(resource_taxon, "（n=", n_total, "）"),
+                              levels = taxon_label_order_23c))
 
 cat("\n=== 調達方式（植物別、行為類型）===\n")
 print(as.data.frame(method_type_long %>% filter(n > 0) %>%
   arrange(resource_taxon, desc(pct)) %>%
   select(resource_taxon, method_type, n, pct)))
 
-label_tbl_23c <- method_type_long %>% distinct(resource_taxon, n_total)
-
-p23c <- ggplot(method_type_long, aes(x = resource_taxon, y = pct, fill = method_type)) +
+p23c <- ggplot(method_type_long, aes(x = taxon_label, y = pct, fill = method_type)) +
   geom_col(position = "stack", width = 0.7) +
-  geom_text(data = label_tbl_23c,
-            aes(x = resource_taxon, y = 1.06, label = paste0("n=", n_total)),
-            inherit.aes = FALSE, size = 3, color = "gray30", family = "HiraginoSans-W3") +
   coord_flip() +
-  scale_fill_brewer(palette = "Dark2", name = "調達方式（行為類型）", drop = FALSE) +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1.16)) +
+  scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式（行為類型）", drop = FALSE) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1), expand = c(0, 0)) +
   labs(
     title = "調達方式の内訳（植物別、行為類型）",
     subtitle = paste0("図16・図23a/23bの3段階嵌入度（自給↔購入）とは別の軸\n",
@@ -2794,7 +2805,7 @@ p23c <- ggplot(method_type_long, aes(x = resource_taxon, y = pct, fill = method_
   theme(plot.title = element_text(face = "bold"), legend.position = "bottom")
 
 ggsave(file.path(OUTPUT_DIR, "23c_method_type_by_plant.png"), p23c,
-       width = 9.5, height = max(6, n_distinct(method_type_long$resource_taxon) * 0.34), dpi = 150)
+       width = 9.5, height = max(6, n_distinct(method_type_long$taxon_label) * 0.34), dpi = 150)
 
 write.csv(method_type_long %>% filter(n > 0) %>%
             arrange(desc(n_total), resource_taxon) %>%
