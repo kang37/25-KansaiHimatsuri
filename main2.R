@@ -2790,7 +2790,9 @@ print(as.data.frame(method_type_long %>% filter(n > 0) %>%
   select(resource_taxon, method_type, n, pct)))
 
 p23c <- ggplot(method_type_long, aes(x = taxon_label, y = pct, fill = method_type)) +
-  geom_col(position = "stack", width = 0.7) +
+  # position_stack(reverse=TRUE)：デフォルトだと積み上げ順が凡例の並び
+  # （①→⑤）と逆になるため、バー内の並びを凡例と一致させる。
+  geom_col(position = position_stack(reverse = TRUE), width = 0.7) +
   coord_flip() +
   scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式（行為類型）", drop = FALSE) +
   scale_y_continuous(labels = scales::percent, limits = c(0, 1), expand = c(0, 0)) +
