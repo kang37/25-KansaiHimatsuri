@@ -365,6 +365,34 @@ code_embeddedness <- function(x) {
   }, integer(1), USE.NAMES = FALSE)
 }
 
+# 調達方式の類型（結果4 の【 】カテゴリーを、嵌入度の強弱（EMBED_LEVELS、
+# 自給↔購入の順序尺度）ではなく行為の種類で5つに分類する、別の軸）。
+# 2026-09-08追加。「現行調達なし」「調達方法不明」はどの類型にも対応しない
+# ためNA（EMBED_LEVELSと同じ対象外扱い）。データ上、1レコード内に複数の
+# 調達方式が「／」併記される例は現状ないため、複数併記時の優先順位は
+# 定義していない（将来出現したら最初に一致した類型を採る）。
+METHOD_TYPE_LEVELS <- list(
+  "① 採取"       = c("氏子・保存会採取", "協働採取", "外部協力者採取"),
+  "② 栽培"       = c("氏子・保存会栽培", "協働栽培"),
+  "③ 提供・奉納" = c("地元農家提供", "地域外農家提供", "農家提供", "地域住民提供",
+                     "地域内事業者提供", "地域内寺社提供", "外部協力者提供", "寄付・奉納"),
+  "④ 購入"       = c("地域内購入", "地域外購入", "購入"),
+  "⑤ 委託"       = c("地元農家委託栽培", "地域外農家委託栽培", "外部業者委託")
+)
+METHOD_TYPE_ORDER <- names(METHOD_TYPE_LEVELS)
+
+code_method_type <- function(x) {
+  cat_str <- bracket_cat(x)
+  vapply(cat_str, function(cs) {
+    if (is.na(cs)) return(NA_character_)
+    base <- str_trim(str_split(cs, "／")[[1]])[1]
+    base <- str_replace_all(base, "[（(].*?[）)]", "")
+    hit <- METHOD_TYPE_ORDER[vapply(METHOD_TYPE_LEVELS, function(v) base %in% v, logical(1))]
+    if (!length(hit)) return(NA_character_)
+    hit[1]
+  }, character(1), USE.NAMES = FALSE)
+}
+
 # 利用方法（結果2 の【 】カテゴリー）。「／」区切りの複数カテゴリーと、
 # （旧来）（代替材）（代替試行・不採用）（推定）という状態注記を分離する。
 code_use <- function(x) {
@@ -452,7 +480,7 @@ TAXON_ORDER <- c(
   # 針葉樹
   "アカマツ", "クロマツ", "マツ類・タケ類・ウメ", "スギ", "ヒノキ",
   # 広葉樹・柴（低木含む）
-  "クリ", "クロモジ", "コバノミツバツツジ", "サカキ", "シイノキ", "シキミ",
+  "ウメ", "クリ", "クロモジ", "コバノミツバツツジ", "サカキ", "シイノキ", "シキミ",
   "ソヨゴ", "ツツジ", "ツバキ", "ヌルデ", "ハンノキ", "他の広葉樹類",
   "雑木", "樹木（樹種不明）",
   # 蔓性
@@ -471,6 +499,12 @@ order_taxon <- function(x) {
     warning("TAXON_ORDER未登録の分類群: ", paste(extra, collapse = "、"))
   factor(x, levels = c(ord, extra))
 }
+
+# 日常利用スコアのラベル・配色（図03a・図19d・図21a/e/fで共通使用）
+daily_label_lv <- c("1 日常的に使う", "2 ほとんどない", "3 全くない")
+daily_colors   <- c("1 日常的に使う" = "#2CA02C",
+                    "2 ほとんどない"  = "#FF7F0E",
+                    "3 全くない"      = "#D62728")
 
 code_landscape <- function(x) {
   vapply(as.character(x), function(z) {
@@ -622,6 +656,7 @@ resource_df_full <- resource_raw %>%
     is_substitute_material = str_detect(replace_na(lead_code(subst_class), ""), "^4$"),
     embed_score    = code_embeddedness(method_class),
     method_cat     = bracket_cat(method_class),
+    method_type    = code_method_type(method_class),
     daily_score    = code_daily(daily_class),
     use_types      = code_use(use_class),
     use_status     = code_use_status(use_class),
@@ -933,44 +968,76 @@ print(as.data.frame(
               推定使用祭り数 = round(w_n, 1))
 ))
 
-# --- 03a: 素 vs 母集団推定 --------------------------------------------------
+# --- 03a: 素の利用の広がり + 日常利用の内訳（右パネル） --------------------
 # 【2026-09-06改訂】全34分類群を表示する（従来はraw_n>=2でフィルタしていた）。
-# 1祭りのみで使われる植物は層化ブートストラップCIが不安定（区間が非常に
-# 広い、または単一府県の値に張り付く）ことに変わりはないため、そのまま
-# 解釈しないよう注意。
+# 【2026-09-08改訂】母集団推定（府県ウェイト補正）の赤点・誤差棒・矢印は
+#   補正の不確実性そのものが焦点になり本図の主題（利用の広がり）をぼかす
+#   ため撤去した（補正値自体はコンソール出力とplant_prevalence_weighted.csv
+#   にそのまま残る）。代わりに右側へ日常利用スコア（daily_label_lv・
+#   daily_colors、図21aと共通定義）の内訳を狭い帯グラフで添え、「多くの
+#   祭りで使われる植物ほど日常生活でも使われ続けているか」を一目で見られる
+#   ようにする（patchworkで左右結合、図01と同じ方式）。
 prev_plot <- prev_tax %>%
   mutate(taxon = order_taxon(taxon))
 # coord_flipなしの横棒(geom_point+y=taxon)なので、上から見たい順に並べるには
 # 逆順にする（factorの最初の水準が下に来るため）。
 prev_plot <- prev_plot %>% mutate(taxon = factor(taxon, levels = rev(levels(taxon))))
 
-p03a <- ggplot(prev_plot, aes(y = taxon)) +
-  geom_errorbar(aes(xmin = lo, xmax = hi), orientation = "y", width = 0,
-                color = "gray70", linewidth = 0.8) +
-  geom_segment(aes(x = raw_prev, xend = w_prev, y = taxon, yend = taxon),
-               color = "gray45", linewidth = 0.4,
-               arrow = arrow(length = unit(0.10, "cm"), type = "closed")) +
-  geom_point(aes(x = raw_prev, color = "素の割合（30祭りのうち）"), size = 2.6) +
-  geom_point(aes(x = w_prev,   color = "母集団推定割合（府県ウェイト）"), size = 3.2) +
-  scale_color_manual(values = c("素の割合（30祭りのうち）" = "#999999",
-                                "母集団推定割合（府県ウェイト）" = "#D62728"),
-                     name = NULL) +
-  scale_x_continuous(labels = scales::percent, limits = c(0, 1)) +
+daily_share_03 <- resource_df %>%
+  filter(!is.na(daily_score)) %>%
+  mutate(daily_label = case_when(daily_score == 1 ~ "1 日常的に使う",
+                                 daily_score == 2 ~ "2 ほとんどない",
+                                 TRUE              ~ "3 全くない")) %>%
+  count(resource_taxon, daily_label) %>%
+  complete(resource_taxon = levels(prev_plot$taxon), daily_label = daily_label_lv,
+           fill = list(n = 0)) %>%
+  group_by(resource_taxon) %>%
+  mutate(pct = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(pct = ifelse(is.nan(pct), NA_real_, pct),
+         resource_taxon = factor(resource_taxon, levels = levels(prev_plot$taxon)),
+         daily_label = factor(daily_label, levels = daily_label_lv))
+
+p03a_main <- ggplot(prev_plot, aes(y = taxon)) +
+  geom_segment(aes(x = 0, xend = raw_prev, y = taxon, yend = taxon),
+               color = "#4472C4", linewidth = 0.9) +
+  geom_point(aes(x = raw_prev), color = "#4472C4", size = 2.8) +
+  scale_x_continuous(labels = scales::percent, limits = c(0, 1), expand = expansion(mult = c(0, 0.03))) +
   labs(
-    title = "植物ごとの利用の広がり — 抽出の府県偏りを補正",
-    subtitle = paste0("解析単位＝祭り×植物分類群（同一祭り内の部位重複は1件に集約） ／ ",
-                      "全", nrow(prev_plot), "分類群\n",
-                      "灰＝素の割合、赤＝母集団156件に事後層化した推定割合、横棒＝層化ブートストラップ95%区間"),
-    x = "その植物を使用する火祭りの割合", y = NULL,
-    caption = "矢印は補正による移動方向。1祭りのみで使われる植物は区間が特に不安定。"
+    title = "植物ごとの利用の広がり",
+    subtitle = paste0("解析単位＝祭り×植物分類群（同一祭り内の部位重複は1件に集約） ／ 全",
+                      nrow(prev_plot), "分類群"),
+    x = "その植物を使用する火祭りの割合（30祭りのうち）", y = NULL
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
-        legend.position = "bottom",
         panel.grid.major.y = element_blank())
 
+p03a_daily <- ggplot(daily_share_03, aes(x = pct, y = resource_taxon, fill = daily_label)) +
+  geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
+  scale_fill_manual(values = daily_colors, name = "日常利用", drop = FALSE) +
+  scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
+  labs(title = "日常利用", x = NULL, y = NULL) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold", size = 10),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid.major.y = element_blank())
+
+# guides="collect"で右パネルの凡例を個別表示せず、拼図全体で1つにまとめる。
+# 末尾の & theme(...) はpatchwork全体（collectされた凡例含む）に効くため、
+# 凡例が右パネル内で途切れず、拼図全体の中央下に表示される。
+p03a <- (p03a_main + p03a_daily +
+  patchwork::plot_layout(widths = c(3, 1), guides = "collect") +
+  patchwork::plot_annotation(
+    caption = paste0("右：日常利用スコアの内訳（緑＝日常的に使う、橙＝ほとんどない、赤＝全くない）。",
+                     "母集団推定割合（府県ウェイト補正）は plant_prevalence_weighted.csv を参照。"),
+    theme = theme(plot.caption = element_text(family = "HiraginoSans-W3"))
+  )) &
+  theme(legend.position = "bottom")
+
 ggsave(file.path(OUTPUT_DIR, "03a_plant_prevalence_weighted.png"), p03a,
-       width = 9.5, height = max(5, nrow(prev_plot) * 0.42), dpi = 150)
+       width = 11, height = max(5, nrow(prev_plot) * 0.42), dpi = 150)
 
 # --- 03b: 府県別の利用率ヒートマップ ----------------------------------------
 pref_prev <- plant_festival %>%
@@ -1733,13 +1800,15 @@ ggsave(file.path(OUTPUT_DIR, "17a_reason_types_overall.png"), p17a,
 # --- 17b: 植物（個別分類群）ごとの理由構成（ウェイト付き）-------------------
 # 【2026-09-06 改訂】結果3の粗い資源グループ（9分類）ではなく、taxon_kind
 #   （人手コード済みの個別植物、TAXON_ORDERで表示順を統一）を行に使う。
-#   記録数2件未満の分類群は割合が不安定なため除外する。
+# 【2026-09-08 改訂】理由が1件でも記録されていれば表示する（全植物を含める）。
+#   従来の「記録数2件未満は除外」は割合の安定性を優先した閾値だったが、
+#   n=1の行も「その1件の記録では何が挙げられたか」という情報として残す。
 # 【選定理由】結果2「植物の選定理由（要点）」に code_reason() の10類型を適用。
 # 【着色】行ごとに割合の高い上位3セルだけをグラデーションで着色する
 #   （固定の分位点しきい値だと行によって着色数がばらつくため、順位方式に
 #   変更）。0%のセルは白、上位3に入らない非0セルは薄灰にして区別する。
 
-REASON_MIN_N <- 2
+REASON_MIN_N <- 1
 
 reason_long <- plant_festival %>%
   filter(!is.na(reason_types)) %>%
@@ -1807,8 +1876,8 @@ p17b <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label)) +
                       labels = scales::percent, name = "その理由を挙げた割合") +
   labs(
     title = "植物ごとの選定理由の構成",
-    subtitle = paste0("2祭り以上で理由が記録された", nrow(taxon_denom), "分類群。",
-                      "縦軸はTAXON_ORDER（生活形）順\n",
+    subtitle = paste0("理由が記録された全", nrow(taxon_denom), "分類群。",
+                      "縦軸はTAXON_ORDER（生活形）順（n=1の分類群を含む）\n",
                       "セル＝その植物を使う祭りのうちその理由が語られた割合",
                       "（行ごとの割合、府県ウェイト補正後）\n",
                       "着色は行ごとの上位3セルのみ。白＝0%、薄灰＝上位3外の非0セル\n",
@@ -2022,10 +2091,14 @@ write.csv(
 # ==============================================================================
 # 図19c: 植物 × 用途（利用方法）
 # ------------------------------------------------------------------------------
-# 図24a（植物×景観）と同じ作図規則：解析単位は資源レコード（use_long、
-# 1レコードが複数用途を持つ場合は展開済み）。件数の連続グラデーション
-# （多いほど濃い青、0件は白）、行=植物はTAXON_ORDER（生活形）順、
-# 列=用途は出現頻度順、府県ウェイトは適用しない（観測された標本の記述）。
+# 解析単位は資源レコード（use_long、1レコードが複数用途を持つ場合は展開
+# 済み）。【2026-09-08改訂】セルの色・数値は件数ではなく行（植物）ごとの
+# 割合——「その植物の資源レコードのうち何%がこの用途を持つか」に変更
+# （図17bと同じ「行内で百分率化」の考え方。分母は展開前の資源レコード数
+# なので、複数用途を持つ記録がある行は合計が100%を超えうる）。
+# 着色は図24aと同じ連続グラデーション（割合が高いほど濃い青、0%は白）、
+# 行=植物はTAXON_ORDER（生活形）順、列=用途は出現頻度順、府県ウェイトは
+# 適用しない（観測された標本の記述）。
 # ------------------------------------------------------------------------------
 
 taxon_order_19c <- levels(order_taxon(use_long$resource_taxon))
@@ -2035,20 +2108,28 @@ cat("\n=== 図19c 対象レコード:", nrow(use_long), "件（",
     n_distinct(paste(use_long$festival, use_long$resource_raw)),
     "件の資源レコードが複数用途のため展開）===\n")
 
+taxon_denom_19c <- use_long %>%
+  distinct(festival, resource_raw, resource_taxon) %>%
+  count(resource_taxon, name = "n_taxon")
+
 mat_19c <- use_long %>%
   count(resource_taxon, use_cat) %>%
-  mutate(resource_taxon = factor(resource_taxon, levels = rev(taxon_order_19c)),
+  left_join(taxon_denom_19c, by = "resource_taxon") %>%
+  mutate(pct = n / n_taxon,
+         resource_taxon = factor(resource_taxon, levels = rev(taxon_order_19c)),
          use_cat = factor(use_cat, levels = use_order_19c))
 
-p19c <- ggplot(mat_19c, aes(x = use_cat, y = resource_taxon, fill = n)) +
+p19c <- ggplot(mat_19c, aes(x = use_cat, y = resource_taxon, fill = pct)) +
   geom_tile(color = "white", linewidth = 0.5) +
-  geom_text(aes(label = n), size = 2.8, family = "HiraginoSans-W3", color = "gray15") +
+  geom_text(aes(label = scales::percent(pct, accuracy = 1)),
+            size = 2.6, family = "HiraginoSans-W3", color = "gray15") +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
-                      name = "レコード数") +
+                      labels = scales::percent, name = "その植物の資源レコードに\n占める割合") +
   labs(
     title = "植物 × 用途（利用方法）",
     subtitle = paste0("資源レコード", n_distinct(paste(use_long$festival, use_long$resource_raw)),
-                      "件。複数用途を持つ記録は両方に計上（合計は資源レコード数を超える）\n",
+                      "件。セルの色・数値は行（植物）ごとの割合\n",
+                      "（その植物の資源レコードのうち何%がこの用途を持つか。複数用途を持つ記録は両方に計上のため行の合計が100%を超えることがある）\n",
                       "行はTAXON_ORDER（生活形）順、列は出現頻度順"),
     x = NULL, y = NULL
   ) +
@@ -2060,7 +2141,78 @@ p19c <- ggplot(mat_19c, aes(x = use_cat, y = resource_taxon, fill = n)) +
 ggsave(file.path(OUTPUT_DIR, "19c_plant_x_use.png"), p19c,
        width = 10, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.33), dpi = 150)
 
-write.csv(mat_19c %>% arrange(desc(n)), file.path(OUTPUT_DIR, "plant_x_use.csv"),
+write.csv(mat_19c %>% arrange(desc(pct)) %>%
+            select(resource_taxon, use_cat, n, n_taxon, pct),
+          file.path(OUTPUT_DIR, "plant_x_use.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8")
+
+# ==============================================================================
+# 図19d: 植物 × 使用部位
+# ------------------------------------------------------------------------------
+# 解析単位は資源レコード（resource_df、部位を分けたまま）。件数そのもの
+# ではなく「その植物の部位記録のうち何%がこの部位か」という行内比率を
+# 円の大きさで表す（松の記録の40%が幹、なら幹のバブルが最大）。部位が
+# 記録されていない資源（NA）はこの図の対象外——ただし【2026-09-08改訂】
+# 行（植物）自体はresource_dfの全分類群を表示する（他の図と同じ「全植物」
+# 方針）。部位データが1件もない分類群（タケ類など、種の同定は明確でも
+# 部位までは記録されなかったケースが多い）は行だけ残り、バブルのない
+# 空行として現れる。行=植物はTAXON_ORDER順、列=部位は出現頻度順、
+# 府県ウェイトは適用しない（観測された標本の記述）。
+# ==============================================================================
+
+# 【注意】結果2「使用部位等」の欠測は空セルではなく文字列"NA"として
+# 記録されているため、is.na()だけでは拾えない。明示的に除外する。
+part_df <- resource_df %>% filter(!is.na(part), part != "", part != "NA")
+
+# 行に使う植物リストはresource_df全体（部位データの有無を問わない）。
+part_taxon_order <- levels(order_taxon(resource_df$resource_taxon))
+part_order        <- part_df %>% count(part, sort = TRUE) %>% pull(part)
+
+cat("\n=== 図19d 対象レコード:", nrow(part_df), "件 /",
+    n_distinct(part_df$resource_taxon), "分類群に部位データあり（全",
+    n_distinct(resource_df$resource_taxon), "分類群中）。",
+    nrow(resource_df) - nrow(part_df), "件は部位未記録のため対象外===\n")
+taxon_no_part <- setdiff(unique(resource_df$resource_taxon), unique(part_df$resource_taxon))
+if (length(taxon_no_part) > 0)
+  cat("部位が1件も記録されておらず図19dで空行になる分類群:",
+      paste(taxon_no_part, collapse = "、"), "\n")
+
+mat_19d <- part_df %>%
+  count(resource_taxon, part, name = "n") %>%
+  group_by(resource_taxon) %>%
+  mutate(n_taxon = sum(n), pct = n / n_taxon) %>%
+  ungroup() %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = rev(part_taxon_order)),
+         part = factor(part, levels = part_order))
+
+p19d <- ggplot(mat_19d, aes(x = part, y = resource_taxon, size = pct)) +
+  geom_point(color = "#08519C", alpha = 0.75) +
+  geom_text(aes(label = scales::percent(pct, accuracy = 1)),
+            size = 2.4, family = "HiraginoSans-W3", color = "gray20", vjust = -1.4) +
+  scale_size_area(max_size = 11, labels = scales::percent,
+                  name = "その植物の部位記録に占める割合") +
+  # drop=FALSE：部位データが1件もない植物も空行として軸に残す（全植物を表示）
+  scale_y_discrete(drop = FALSE) +
+  labs(
+    title = "植物 × 使用部位",
+    subtitle = paste0("全", length(part_taxon_order), "分類群のうち使用部位が記録された",
+                      n_distinct(part_df$resource_taxon), "分類群（資源レコード", nrow(part_df), "件）に円を表示。",
+                      "円の大きさ＝その植物の部位記録のうちこの部位が占める割合\n",
+                      "（例：50%ならその植物の部位記録の半分がこの部位）。行はTAXON_ORDER順、列は出現頻度順\n",
+                      "部位未記録の分類群は空行のまま残す。記録数が少ない分類群（特にn=1）は割合が不安定な点に注意"),
+    x = NULL, y = NULL
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid.major = element_line(color = "gray92"),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "bottom")
+
+ggsave(file.path(OUTPUT_DIR, "19d_plant_x_part.png"), p19d,
+       width = 10, height = max(6, length(part_taxon_order) * 0.38), dpi = 150)
+
+write.csv(mat_19d %>% arrange(desc(pct)), file.path(OUTPUT_DIR, "plant_x_part.csv"),
           row.names = FALSE, fileEncoding = "UTF-8")
 
 # ==============================================================================
@@ -2128,12 +2280,8 @@ ggsave(file.path(OUTPUT_DIR, "20_use_vs_substitutability.png"), p20_use_subst,
 # ==============================================================================
 # 図21a: 日常利用スコアの全体分布
 #   1=日常的に使う / 2=ほとんどない / 3=全くない の件数棒グラフ
+#   daily_label_lv / daily_colors は図03aで先に定義済み（共通定義）。
 # ==============================================================================
-
-daily_label_lv <- c("1 日常的に使う", "2 ほとんどない", "3 全くない")
-daily_colors   <- c("1 日常的に使う" = "#2CA02C",
-                    "2 ほとんどない"  = "#FF7F0E",
-                    "3 全くない"      = "#D62728")
 
 daily_overall <- resource_df %>%
   filter(!is.na(daily_score)) %>%
@@ -2516,14 +2664,20 @@ embed_records <- resource_df %>%
          embed_label = factor(embed_score, levels = c(3, 2, 1), labels = embed_lv))
 
 # 共通のプロット関数（集計キーだけ差し替える）
+# custom_order を渡すと、その順序（例：TAXON_ORDER）で並べる（他の植物別の
+# 図と並びを揃えるため）。NULLなら従来通りmean_embedで並べる（府県別など）。
 plot_embed_breakdown <- function(df, group_var, title, subtitle, y_lab = NULL,
-                                  order_desc = TRUE) {
+                                  order_desc = TRUE, custom_order = NULL) {
   summary_tbl <- df %>%
     group_by({{ group_var }}) %>%
     summarise(mean_embed = mean(embed_score, na.rm = TRUE),
               n_total = n(), .groups = "drop") %>%
     arrange(if (order_desc) desc(mean_embed) else mean_embed)
-  ord <- summary_tbl %>% pull({{ group_var }})
+  ord <- if (!is.null(custom_order)) {
+    intersect(custom_order, summary_tbl %>% pull({{ group_var }}))
+  } else {
+    summary_tbl %>% pull({{ group_var }})
+  }
 
   long_tbl <- df %>%
     count({{ group_var }}, embed_label) %>%
@@ -2567,10 +2721,14 @@ ggsave(file.path(OUTPUT_DIR, "23a_embed_by_pref.png"), res_pref$plot,
        width = 9, height = 4.5, dpi = 150)
 
 # --- 23b: 植物別 ---
+# 【2026-09-08改訂】並びを他の植物別の図（図03a・17b・19c・19d・29）と揃える
+# ため、嵌入度平均順ではなくTAXON_ORDER（生活形）順にする。
 res_taxon <- plot_embed_breakdown(
   embed_records, resource_taxon,
   title = "調達方法の内訳（植物別）",
-  subtitle = "右の数値 = 嵌入度平均 (n=記録数)。府県ウェイトなし（観測された標本の記述）"
+  subtitle = paste0("右の数値 = 嵌入度平均 (n=記録数)。府県ウェイトなし（観測された標本の記述）\n",
+                    "行はTAXON_ORDER（生活形）順（他の植物別の図と共通）"),
+  custom_order = rev(levels(order_taxon(embed_records$resource_taxon)))
 )
 cat("
 === 調達方法（植物別） ===
@@ -2583,10 +2741,66 @@ write.csv(res_pref$summary, file.path(OUTPUT_DIR, "embed_by_pref.csv"),
 write.csv(res_taxon$summary, file.path(OUTPUT_DIR, "embed_by_plant.csv"),
           row.names = FALSE, fileEncoding = "UTF-8")
 
-# 2026-09-06: 図23c（同じ植物が府県によって調達方法が変わるか）は削除。
+# 2026-09-06: 旧「図23c（同じ植物が府県によって調達方法が変わるか）」は削除。
 # 府県の次元を外すと23b（植物別の調達方法）と同じ内容になるため。
 # pref_x_plant（植物×府県別の嵌入度）はplant_x_landscape.csv等と同様の
 # 生データとして embed_pref_x_plant.csv に残す。
+
+# --- 23c: 調達方式の内訳（植物別、行為類型） --------------------------------
+# 【2026-09-08追加】図16・23a/23bの3段階「嵌入度」（自給↔購入の強弱、順序
+# 尺度）とは別の軸として、行為の種類（採取・栽培・提供／奉納・購入・委託の
+# 5類型、METHOD_TYPE_LEVELS）で植物ごとの内訳を見る。府県ウェイトなし
+# （観測された標本の記述、23a/23bと同じ方針）。
+# 【2026-09-08改訂】並びは記録数順ではなく、他の植物別の図（図03a・17b・
+# 19c・19d・23b・29）と揃えてTAXON_ORDER（生活形）順にする。
+method_type_records <- resource_df %>%
+  filter(!is.na(method_type)) %>%
+  mutate(method_type = factor(method_type, levels = METHOD_TYPE_ORDER))
+
+taxon_method_order <- intersect(rev(levels(order_taxon(method_type_records$resource_taxon))),
+                                 unique(method_type_records$resource_taxon))
+
+method_type_long <- method_type_records %>%
+  count(resource_taxon, method_type, .drop = FALSE) %>%
+  filter(resource_taxon %in% taxon_method_order) %>%
+  group_by(resource_taxon) %>%
+  mutate(n_total = sum(n), pct = n / n_total) %>%
+  ungroup() %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = taxon_method_order))
+
+cat("\n=== 調達方式（植物別、行為類型）===\n")
+print(as.data.frame(method_type_long %>% filter(n > 0) %>%
+  arrange(resource_taxon, desc(pct)) %>%
+  select(resource_taxon, method_type, n, pct)))
+
+label_tbl_23c <- method_type_long %>% distinct(resource_taxon, n_total)
+
+p23c <- ggplot(method_type_long, aes(x = resource_taxon, y = pct, fill = method_type)) +
+  geom_col(position = "stack", width = 0.7) +
+  geom_text(data = label_tbl_23c,
+            aes(x = resource_taxon, y = 1.06, label = paste0("n=", n_total)),
+            inherit.aes = FALSE, size = 3, color = "gray30", family = "HiraginoSans-W3") +
+  coord_flip() +
+  scale_fill_brewer(palette = "Dark2", name = "調達方式（行為類型）", drop = FALSE) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.16)) +
+  labs(
+    title = "調達方式の内訳（植物別、行為類型）",
+    subtitle = paste0("図16・図23a/23bの3段階嵌入度（自給↔購入）とは別の軸\n",
+                      "採取・栽培・提供／奉納・購入・委託の5類型（結果4のカテゴリーを再分類）\n",
+                      "「現行調達なし」「調達方法不明」のレコードは対象外。府県ウェイトなし。行はTAXON_ORDER順"),
+    x = NULL, y = "植物資源レコードの割合"
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"), legend.position = "bottom")
+
+ggsave(file.path(OUTPUT_DIR, "23c_method_type_by_plant.png"), p23c,
+       width = 9.5, height = max(6, n_distinct(method_type_long$resource_taxon) * 0.34), dpi = 150)
+
+write.csv(method_type_long %>% filter(n > 0) %>%
+            arrange(desc(n_total), resource_taxon) %>%
+            select(resource_taxon, method_type, n, n_total, pct),
+          file.path(OUTPUT_DIR, "method_type_by_plant.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8")
 pref_x_plant <- embed_records %>%
   group_by(resource_taxon, pref) %>%
   summarise(mean_embed = mean(embed_score), n = n(), .groups = "drop")
@@ -2678,6 +2892,70 @@ write.csv(
   file.path(OUTPUT_DIR, "procurement_change_by_plant.csv"),
   row.names = FALSE, fileEncoding = "UTF-8"
 )
+
+# ==============================================================================
+# 図29: 植物 × 調達方式 × 調達地の変化
+# ------------------------------------------------------------------------------
+# 【2026-09-08改訂】調達方式（図23cと同じ5類型）ごとに小図（facet）を分け、
+# 各小図の中で 横軸＝調達地の変化、縦軸＝植物（TAXON_ORDER順、全分類群を
+# 表示）、セルの色＝記録数（言及された回数）とする。図22（代替可能性×
+# 日常利用×調達方法）を植物ごとに小図分割して3軸を一度に載せた旧版は
+# 「複雑で読みにくい」として2026-09-06に色分けを廃止した経緯があるが、
+# 本図は分割軸を調達方式（5水準のみ）に絞ることで同じ轍を避ける。
+# 【使用停止の扱い】図28はresource_df_full（現在使われていない資源を含む）
+# を使うが、本図はresource_df（現在使われている資源のみ）を使う——確認した
+# ところ、使用停止（current_use=0）の13件はいずれも調達方式（method_class）
+# が記録されていない（使われなくなった資源には「現在の調達方式」という
+# 概念自体が成立しないため）。したがって「使用停止」列は本図には現れない。
+# 植物の並びを図23bと揃えるため、行の植物リストもresource_df基準にする。
+# ------------------------------------------------------------------------------
+
+# 「使用停止」はresource_df（current_use==1のみ）には構造的に出現しない
+# ため、列（x軸）からも除いてスペースを無駄にしない。
+change_method_df <- resource_df %>%
+  filter(!is.na(method_type), !is.na(change_cat)) %>%
+  mutate(method_type = factor(method_type, levels = METHOD_TYPE_ORDER),
+         change_cat  = factor(as.character(change_cat),
+                              levels = setdiff(CHANGE_LEVELS, "使用停止")))
+
+# 行の植物リストはresource_df全体（データがない植物も空行として軸に残し、
+# 全植物を表示。図23b/23cと同じ植物ユニバース）。
+taxon_order_29 <- levels(order_taxon(resource_df$resource_taxon))
+
+cat("\n=== 図29 対象レコード:", nrow(change_method_df), "件 /",
+    n_distinct(change_method_df$resource_taxon), "分類群にデータあり（全",
+    length(taxon_order_29), "分類群中。調達方式・調達地の変化がともに記録された資源）===\n")
+
+mat_29 <- change_method_df %>%
+  count(resource_taxon, method_type, change_cat, name = "n") %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = rev(taxon_order_29)))
+
+p29 <- ggplot(mat_29, aes(x = change_cat, y = resource_taxon, fill = n)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = n), size = 2.6, family = "HiraginoSans-W3", color = "gray15") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white", name = "記録数") +
+  scale_y_discrete(drop = FALSE) +
+  facet_wrap(~ method_type, nrow = 1) +
+  labs(
+    title = "植物 × 調達方式 × 調達地の変化",
+    subtitle = paste0("全", length(taxon_order_29), "分類群中", n_distinct(change_method_df$resource_taxon),
+                      "分類群にデータあり（資源レコード", nrow(change_method_df), "件）\n",
+                      "小図＝調達方式（図23cと同じ5類型）、セルの色・数字＝記録数（言及された回数）\n",
+                      "「使用停止」は調達方式が記録されないためこの図には現れない（詳細は図28）。行はTAXON_ORDER順"),
+    x = NULL, y = NULL
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(face = "bold"))
+
+ggsave(file.path(OUTPUT_DIR, "29_plant_x_method_x_change.png"), p29,
+       width = 15, height = max(7, length(taxon_order_29) * 0.3), dpi = 150)
+
+write.csv(mat_29 %>% filter(n > 0) %>% arrange(resource_taxon, method_type, change_cat),
+          file.path(OUTPUT_DIR, "plant_x_method_x_change.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8")
 
 # ==============================================================================
 # 図18: 生息地依存ネットワーク（祭り × 景観タイプ）
@@ -3250,7 +3528,8 @@ embed_codebook_sheet2 <- tribble(
   "複数併記の扱い", "1レコード内で調達方法が「／」区切りで複数併記される場合（例：「氏子・保存会採取／地域住民提供」）、code_embeddedness()はそのレコードが該当する複数カテゴリーのうち最も嵌入度スコアが高いもの（＝最も自給的な方法）を採用する",
   "状態注記の除去", "カテゴリー文字列に付く（旧来）（推定）等の括弧注記は判定前に除去し、括弧を除いた本体でグルーピングする",
   "対象外カテゴリー", "「現行調達なし」「調達方法不明」の2カテゴリーはどの嵌入度スコアにも対応しないためNAとする",
-  "図22での扱い", "2026-09-06以降、図22（代替可能性×日常利用の散布図）では調達方法による色分けを廃止した。調達方法は図16・図23a/23b・図28で別途扱う"
+  "図22での扱い", "2026-09-06以降、図22（代替可能性×日常利用の散布図）では調達方法による色分けを廃止した。調達方法は図16・図23a/23b・図28で別途扱う",
+  "行為類型（method_type）", "2026-09-08追加。同じmethod_classを、嵌入度の強弱ではなく行為の種類（採取・栽培・提供／奉納・購入・委託の5類型）で再分類したもの。順序尺度ではないため嵌入度スコアとは独立に扱う。図23cで使用（シート4「行為類型対応表」参照）"
 )
 
 embed_codebook_sheet3 <- resource_df %>%
@@ -3258,10 +3537,18 @@ embed_codebook_sheet3 <- resource_df %>%
   count(method_cat, name = "件数") %>%
   arrange(desc(件数))
 
+method_type_codebook <- lapply(METHOD_TYPE_ORDER, function(lv) {
+  tibble(元カテゴリー = METHOD_TYPE_LEVELS[[lv]], 行為類型 = lv)
+}) %>% bind_rows() %>%
+  bind_rows(tibble(元カテゴリー = c("現行調達なし", "調達方法不明"),
+                   行為類型 = "（分類対象外＝NA）")) %>%
+  select(元カテゴリー, 行為類型)
+
 write_xlsx(
   list("対応表" = embed_codebook_sheet1,
        "判定ロジック" = embed_codebook_sheet2,
-       "元カテゴリー別件数（検算）" = embed_codebook_sheet3),
+       "元カテゴリー別件数（検算）" = embed_codebook_sheet3,
+       "行為類型対応表（図23c）" = method_type_codebook),
   path = file.path(OUTPUT_DIR, "調達方法_コーディング仕様書.xlsx")
 )
 
@@ -3281,7 +3568,7 @@ write.csv(
 write.csv(
   resource_df %>% select(festival, resource_raw, resource_taxon, part,
                          landscape_raw, landscape_all, landscape_norm,
-                         method_class, method_cat, embed_score,
+                         method_class, method_cat, embed_score, method_type,
                          timing_raw, change_class, change_cat,
                          use_class, use_types, use_status,
                          subst_class, subst_score, is_substitute_material,
