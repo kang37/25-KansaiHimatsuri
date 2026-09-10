@@ -313,8 +313,20 @@ lead_code <- function(x) {
   str_match(str_squish(v), "^([0-9][AB]?)")[, 2]
 }
 
-# 【 】内の分類ラベルを取り出す
-bracket_cat <- function(x) str_match(as.character(x), "^【([^】]+)】")[, 2]
+# 【 】内の分類ラベルを取り出す。
+# 【2026-09-10修正】旧実装は最初の【 】1個しか拾えなかったが、実データには
+# 「【燃焼材】【充填材】」のように複数の【 】が「／」なしで連続するセルが
+# 多数ある（method_classで162件中71件、use_classで162件中61件）ため、
+# 2個目以降のカテゴリーが黙って失われていた（例：「充填材」が図19c等に
+# 一切現れない原因）。str_match_allで全ての【 】を拾い、「|」区切りで返す。
+bracket_cat <- function(x) {
+  vapply(as.character(x), function(z) {
+    if (is.na(z)) return(NA_character_)
+    m <- str_match_all(z, "【([^】]+)】")[[1]]
+    if (nrow(m) == 0) return(NA_character_)
+    paste(m[, 2], collapse = "|")
+  }, character(1), USE.NAMES = FALSE)
+}
 
 # 日常利用スコア：1=日常的に使う, 2=ほとんどない, 3=全くない
 code_daily <- function(x) suppressWarnings(as.integer(lead_code(x)))
@@ -341,9 +353,13 @@ code_change <- function(x) {
 #   2 = 地域内の他者から無償で得る（農家・住民・寺社・事業者、副産物の再利用）
 #   1 = 市場・地域外に依存（購入・業者委託・地域外の提供者）
 #   NA = 現行調達なし／調達方法不明
-# 1つのセルに複数カテゴリーが「／」で並ぶ場合は最も高い嵌入度を採る。
+# 1つのセルに複数カテゴリーが並ぶ場合は最も高い嵌入度を採る（bracket_cat()が
+# 【A】【B】を"A|B"として返すほか、稀に単一【 】内で「／」区切りされる
+# 場合もあるため、区切り文字は「／」「|」の両方を受け付ける）。
+# 「地域内採取（旧来）」は行為者を明示しないが、共同体による自給的な採取の
+# 旧称と判断し③ではなく③の1つ上、level 3（自ら採取・栽培）に含める。
 EMBED_LEVELS <- list(
-  "3" = c("氏子・保存会採取", "氏子・保存会栽培", "協働採取", "協働栽培"),
+  "3" = c("氏子・保存会採取", "氏子・保存会栽培", "協働採取", "協働栽培", "地域内採取"),
   "2" = c("地域住民提供", "地元農家提供", "地元農家委託栽培", "地域内寺社提供",
           "地域内事業者提供", "副産物・再利用", "寄付・奉納"),
   "1" = c("地域外購入", "地域内購入", "購入", "外部業者委託", "外部協力者提供",
@@ -351,31 +367,49 @@ EMBED_LEVELS <- list(
           "地域外農家委託栽培", "農家提供")
 )
 
+# 複数カテゴリーが併記される場合に「最も嵌入度が高い（＝最も自給的な）
+# カテゴリー」を代表として選ぶ共通ヘルパー。code_embeddedness・
+# code_method_type の両方がこれを使うことで、1レコードに複数の調達方式が
+# 併記されていても両者が矛盾しない（同じカテゴリーを勝者として選ぶ）。
+winning_method_cat <- function(cs) {
+  if (is.na(cs)) return(NA_character_)
+  parts <- str_trim(str_split(cs, "[／|]")[[1]])
+  parts <- str_replace_all(parts, "[（(].*?[）)]", "")   # （旧来）（推定）を落とす
+  parts <- parts[parts != ""]
+  if (!length(parts)) return(NA_character_)
+  sc <- vapply(parts, function(p) {
+    lv <- names(EMBED_LEVELS)[vapply(EMBED_LEVELS, function(v) p %in% v, logical(1))]
+    if (length(lv)) as.integer(lv[1]) else NA_integer_
+  }, integer(1))
+  if (all(is.na(sc))) parts[1] else parts[which.max(sc)]
+}
+
 code_embeddedness <- function(x) {
   cat_str <- bracket_cat(x)
   vapply(cat_str, function(cs) {
-    if (is.na(cs)) return(NA_integer_)
-    parts <- str_trim(str_split(cs, "／")[[1]])
-    parts <- str_replace_all(parts, "[（(].*?[）)]", "")   # （旧来）（推定）を落とす
-    sc <- integer(0)
+    winner <- winning_method_cat(cs)
+    if (is.na(winner)) return(NA_integer_)
     for (lv in names(EMBED_LEVELS))
-      if (any(parts %in% EMBED_LEVELS[[lv]])) sc <- c(sc, as.integer(lv))
-    if (!length(sc)) return(NA_integer_)
-    max(sc)
+      if (winner %in% EMBED_LEVELS[[lv]]) return(as.integer(lv))
+    NA_integer_
   }, integer(1), USE.NAMES = FALSE)
 }
 
 # 調達方式の類型（結果4 の【 】カテゴリーを、嵌入度の強弱（EMBED_LEVELS、
 # 自給↔購入の順序尺度）ではなく行為の種類で5つに分類する、別の軸）。
-# 2026-09-08追加。「現行調達なし」「調達方法不明」はどの類型にも対応しない
-# ためNA（EMBED_LEVELSと同じ対象外扱い）。データ上、1レコード内に複数の
-# 調達方式が「／」併記される例は現状ないため、複数併記時の優先順位は
-# 定義していない（将来出現したら最初に一致した類型を採る）。
+# 2026-09-08追加、2026-09-10修正（bracket_cat()の複数【 】対応に伴い、
+# 複数の調達方式が併記されるレコードをwinning_method_cat()で
+# code_embeddednessと同じ代表カテゴリーに解決するよう変更。あわせて
+# EMBED_LEVELSにはあるがどの類型にも属さず落ちていた「副産物・再利用」を
+# ③提供・奉納に追加——他者からの供与という点で提供系に最も近いため）。
+# 「現行調達なし」「調達方法不明」はどの類型にも対応しないためNA
+# （EMBED_LEVELSと同じ対象外扱い）。
 METHOD_TYPE_LEVELS <- list(
-  "① 採取"       = c("氏子・保存会採取", "協働採取", "外部協力者採取"),
+  "① 採取"       = c("氏子・保存会採取", "協働採取", "外部協力者採取", "地域内採取"),
   "② 栽培"       = c("氏子・保存会栽培", "協働栽培"),
   "③ 提供・奉納" = c("地元農家提供", "地域外農家提供", "農家提供", "地域住民提供",
-                     "地域内事業者提供", "地域内寺社提供", "外部協力者提供", "寄付・奉納"),
+                     "地域内事業者提供", "地域内寺社提供", "外部協力者提供", "寄付・奉納",
+                     "副産物・再利用"),
   "④ 購入"       = c("地域内購入", "地域外購入", "購入"),
   "⑤ 委託"       = c("地元農家委託栽培", "地域外農家委託栽培", "外部業者委託")
 )
@@ -388,22 +422,22 @@ METHOD_TYPE_PAL <- setNames(
 code_method_type <- function(x) {
   cat_str <- bracket_cat(x)
   vapply(cat_str, function(cs) {
-    if (is.na(cs)) return(NA_character_)
-    base <- str_trim(str_split(cs, "／")[[1]])[1]
-    base <- str_replace_all(base, "[（(].*?[）)]", "")
-    hit <- METHOD_TYPE_ORDER[vapply(METHOD_TYPE_LEVELS, function(v) base %in% v, logical(1))]
+    winner <- winning_method_cat(cs)
+    if (is.na(winner)) return(NA_character_)
+    hit <- METHOD_TYPE_ORDER[vapply(METHOD_TYPE_LEVELS, function(v) winner %in% v, logical(1))]
     if (!length(hit)) return(NA_character_)
     hit[1]
   }, character(1), USE.NAMES = FALSE)
 }
 
-# 利用方法（結果2 の【 】カテゴリー）。「／」区切りの複数カテゴリーと、
+# 利用方法（結果2 の【 】カテゴリー）。bracket_cat()が返す「／」「|」
+# 区切りの複数カテゴリー（【A】【B】のように連続する【 】も含む）と、
 # （旧来）（代替材）（代替試行・不採用）（推定）という状態注記を分離する。
 code_use <- function(x) {
   cs <- bracket_cat(x)
   vapply(cs, function(z) {
     if (is.na(z)) return(NA_character_)
-    parts <- str_trim(str_split(z, "／")[[1]])
+    parts <- str_trim(str_split(z, "[／|]")[[1]])
     parts <- unique(str_replace_all(parts, "[（(].*?[）)]", ""))
     parts <- parts[parts != ""]
     if (!length(parts)) return(NA_character_)
@@ -509,6 +543,14 @@ daily_label_lv <- c("1 日常的に使う", "2 ほとんどない", "3 全くな
 daily_colors   <- c("1 日常的に使う" = "#2CA02C",
                     "2 ほとんどない"  = "#FF7F0E",
                     "3 全くない"      = "#D62728")
+
+# 代替可能性スコアのラベル・配色（図17b・図20で共通使用）
+subst_label_lv <- c("代替可（1）", "代替困難（2）", "代替不可（3）")
+subst_colors_20 <- c(
+  "代替可（1）"    = "#4DAF4A",
+  "代替困難（2）"  = "#FF7F00",
+  "代替不可（3）"  = "#E41A1C"
+)
 
 code_landscape <- function(x) {
   vapply(as.character(x), function(z) {
@@ -1863,7 +1905,7 @@ reason_grid <- expand_grid(
     TRUE               ~ "mid"
   ))
 
-p17b <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label)) +
+p17b_main <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label)) +
   # 背景：0%セルは白、上位3に入らない非0セルは薄灰
   geom_tile(data = ~ filter(.x, cell_kind == "zero"),
             fill = "white", color = "white", linewidth = 0.5) +
@@ -1891,11 +1933,47 @@ p17b <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label)) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(plot.title = element_text(face = "bold"),
         panel.grid = element_blank(),
-        axis.text.x = element_text(angle = 30, hjust = 1),
-        legend.position = "bottom")
+        axis.text.x = element_text(angle = 30, hjust = 1))
+
+# --- 右パネル：代替可能性の内訳（狭い積み上げ棒、図03aと同じpatchwork方式）---
+# 【2026-09-09追加】解析単位は資源レコード（resource_df、府県ウェイトなし）
+# ——左の理由ヒートマップ（祭り×植物、府県ウェイト付き）とは単位が異なる
+# 点に注意。行の並びは左パネルと同じtaxon_label（label_order_17b）。
+subst_share_17b <- resource_df %>%
+  filter(resource_taxon %in% taxon_denom$resource_taxon, !is.na(subst_score)) %>%
+  mutate(subst_label = factor(subst_score, levels = 1:3, labels = subst_label_lv)) %>%
+  count(resource_taxon, subst_label) %>%
+  complete(resource_taxon = taxon_denom$resource_taxon, subst_label = subst_label_lv,
+           fill = list(n = 0)) %>%
+  group_by(resource_taxon) %>%
+  mutate(pct = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(pct = ifelse(is.nan(pct), NA_real_, pct)) %>%
+  left_join(taxon_denom %>% select(resource_taxon, n_fes), by = "resource_taxon") %>%
+  mutate(taxon_label = factor(paste0(resource_taxon, "（", n_fes, "祭り）"), levels = rev(label_order_17b)))
+
+p17b_subst <- ggplot(subst_share_17b, aes(x = pct, y = taxon_label, fill = subst_label)) +
+  geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
+  scale_fill_manual(values = subst_colors_20, name = "代替可能性", drop = FALSE) +
+  scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
+  labs(title = "代替可能性", x = NULL, y = NULL) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold", size = 10),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid.major.y = element_blank())
+
+p17b <- (p17b_main + p17b_subst +
+  patchwork::plot_layout(widths = c(3, 1), guides = "collect") +
+  patchwork::plot_annotation(
+    caption = paste0("右：代替可能性の内訳（緑＝代替可、橙＝代替困難、赤＝代替不可）。",
+                     "資源レコード単位の割合（府県ウェイトなし、左の理由ヒートマップとは解析単位が異なる）"),
+    theme = theme(plot.caption = element_text(family = "HiraginoSans-W3"))
+  )) &
+  theme(legend.position = "bottom")
 
 ggsave(file.path(OUTPUT_DIR, "17b_reason_by_plant.png"), p17b,
-       width = 10, height = max(6.5, nrow(taxon_denom) * 0.42), dpi = 150)
+       width = 13, height = max(6.5, nrow(taxon_denom) * 0.42), dpi = 150)
 
 write.csv(
   plant_festival %>%
@@ -2155,31 +2233,26 @@ write.csv(mat_19c %>% arrange(desc(pct)) %>%
 # ------------------------------------------------------------------------------
 # 解析単位は資源レコード（resource_df、部位を分けたまま）。件数そのもの
 # ではなく「その植物の部位記録のうち何%がこの部位か」という行内比率を
-# 円の大きさで表す（松の記録の40%が幹、なら幹のバブルが最大）。部位が
-# 記録されていない資源（NA）はこの図の対象外——ただし【2026-09-08改訂】
-# 行（植物）自体はresource_dfの全分類群を表示する（他の図と同じ「全植物」
-# 方針）。部位データが1件もない分類群（タケ類など、種の同定は明確でも
-# 部位までは記録されなかったケースが多い）は行だけ残り、バブルのない
-# 空行として現れる。行=植物はTAXON_ORDER順、列=部位は出現頻度順、
-# 府県ウェイトは適用しない（観測された標本の記述）。
+# 円の大きさで表す（松の記録の40%が幹、なら幹のバブルが最大）。
+# 【2026-09-09改訂】結果2「使用部位等」の文字列"NA"は欠測ではなく、
+# 「特定の部位を区別せず全体を使う／部位という概念が当てはまらない」
+# ケースを表すとの確認を得たため、除外せず「全体/NA」という1カテゴリー
+# として列に含める（他の部位と同列に扱う）。行=植物はTAXON_ORDER順、
+# 列=部位は出現頻度順、府県ウェイトは適用しない（観測された標本の記述）。
 # ==============================================================================
 
-# 【注意】結果2「使用部位等」の欠測は空セルではなく文字列"NA"として
-# 記録されているため、is.na()だけでは拾えない。明示的に除外する。
-part_df <- resource_df %>% filter(!is.na(part), part != "", part != "NA")
+part_df <- resource_df %>%
+  mutate(part = ifelse(is.na(part) | part %in% c("", "NA"), "全体/NA", part))
 
-# 行に使う植物リストはresource_df全体（部位データの有無を問わない）。
+# 行に使う植物リストはresource_df全体（「全体/NA」を含めるため全レコードが対象）。
 part_taxon_order <- levels(order_taxon(resource_df$resource_taxon))
 part_order        <- part_df %>% count(part, sort = TRUE) %>% pull(part)
 
 cat("\n=== 図19d 対象レコード:", nrow(part_df), "件 /",
-    n_distinct(part_df$resource_taxon), "分類群に部位データあり（全",
+    n_distinct(part_df$resource_taxon), "分類群（全",
     n_distinct(resource_df$resource_taxon), "分類群中）。",
-    nrow(resource_df) - nrow(part_df), "件は部位未記録のため対象外===\n")
-taxon_no_part <- setdiff(unique(resource_df$resource_taxon), unique(part_df$resource_taxon))
-if (length(taxon_no_part) > 0)
-  cat("部位が1件も記録されておらず図19dで空行になる分類群:",
-      paste(taxon_no_part, collapse = "、"), "\n")
+    "うち「全体/NA」（特定の部位を区別しない）が",
+    sum(part_df$part == "全体/NA"), "件===\n")
 
 mat_19d <- part_df %>%
   count(resource_taxon, part, name = "n") %>%
@@ -2199,11 +2272,11 @@ p19d <- ggplot(mat_19d, aes(x = part, y = resource_taxon, size = pct)) +
   scale_y_discrete(drop = FALSE) +
   labs(
     title = "植物 × 使用部位",
-    subtitle = paste0("全", length(part_taxon_order), "分類群のうち使用部位が記録された",
-                      n_distinct(part_df$resource_taxon), "分類群（資源レコード", nrow(part_df), "件）に円を表示。",
+    subtitle = paste0("全", length(part_taxon_order), "分類群、資源レコード", nrow(part_df), "件。",
                       "円の大きさ＝その植物の部位記録のうちこの部位が占める割合\n",
-                      "（例：50%ならその植物の部位記録の半分がこの部位）。行はTAXON_ORDER順、列は出現頻度順\n",
-                      "部位未記録の分類群は空行のまま残す。記録数が少ない分類群（特にn=1）は割合が不安定な点に注意"),
+                      "（例：50%ならその植物の部位記録の半分がこの部位）\n",
+                      "「全体/NA」＝特定の部位を区別せず全体を使う、または部位が未記録。行はTAXON_ORDER順、列は出現頻度順\n",
+                      "記録数が少ない分類群（特にn=1）は割合が不安定な点に注意"),
     x = NULL, y = NULL
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
@@ -2226,11 +2299,7 @@ write.csv(mat_19d %>% arrange(desc(pct)), file.path(OUTPUT_DIR, "plant_x_part.cs
 #   「装飾・化粧材は代替不可が多い」等の仮説を検証。
 # ==============================================================================
 
-subst_colors_20 <- c(
-  "代替可（1）"    = "#4DAF4A",
-  "代替困難（2）"  = "#FF7F00",
-  "代替不可（3）"  = "#E41A1C"
-)
+# subst_colors_20はsubst_label_lvとともに図17bの手前で共通定義済み。
 
 use_subst_df <- resource_df %>%
   filter(!is.na(use_types), !is.na(subst_score)) %>%
@@ -2833,10 +2902,10 @@ write.csv(
 # に絞っているが、この図は「資源基盤がどう変容したか」を見るものなので
 # 使用停止（＝discontinued_resources.csvの13件）も対象に含める必要がある。
 # そのためここだけ resource_df_full（current_useで絞る前）を使う。
-# 対象は2記録以上でchange_catが記録された17分類群。植物の並びは
-# TAXON_ORDERではなく「変化が大きい順」（以前より広い＋使用停止の割合が
-# 高い順）——この図の主題そのものが変化の大きさなので、生活形順より
-# 変化順の方が読みやすい。
+# 【2026-09-09改訂】change_catが記録された植物は全て表示する（n=1分類群
+# も含む。他の図と同じ「全植物」方針）。植物の並びはTAXON_ORDERではなく
+# 「変化が大きい順」（以前より広い＋使用停止の割合が高い順）——この図の
+# 主題そのものが変化の大きさなので、生活形順より変化順の方が読みやすい。
 # ------------------------------------------------------------------------------
 
 CHANGE_PAL <- c(
@@ -2852,11 +2921,10 @@ change_records <- resource_df_full %>%
   mutate(change_cat = factor(as.character(change_cat), levels = CHANGE_LEVELS))
 
 change_denom <- change_records %>%
-  count(resource_taxon, name = "n_rec") %>%
-  filter(n_rec >= 2)
+  count(resource_taxon, name = "n_rec")
 
-cat("\n=== 図28 除外（記録2件未満、", sum(!change_records$resource_taxon %in% change_denom$resource_taxon),
-    "件）===\n")
+cat("\n=== 図28 対象:", nrow(change_denom), "分類群（change_catが記録された全植物。n_rec=1が",
+    sum(change_denom$n_rec == 1), "分類群）===\n")
 
 change_summary <- change_records %>%
   filter(resource_taxon %in% change_denom$resource_taxon) %>%
@@ -2888,8 +2956,10 @@ p28 <- ggplot(change_summary, aes(x = taxon_label, y = pct, fill = change_cat)) 
   scale_y_continuous(labels = scales::percent) +
   labs(
     title = "植物ごとの調達地の変化",
-    subtitle = paste0("2記録以上ある", nrow(change_denom), "分類群。現在使われていない資源（使用停止）も含む\n",
-                      "並びは変化が大きい順（「以前より広い」＋「使用停止」の割合が高い順）"),
+    subtitle = paste0("全", nrow(change_denom), "分類群（現在使われていない資源＝使用停止も含む）。",
+                      "並びは変化が大きい順\n",
+                      "（「以前より広い」＋「使用停止」の割合が高い順）\n",
+                      "記録数が少ない分類群（特にn=1）は割合が不安定な点に注意"),
     x = NULL, y = "資源レコードの割合"
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
@@ -2903,6 +2973,81 @@ ggsave(file.path(OUTPUT_DIR, "28_procurement_change_by_plant.png"), p28,
 write.csv(
   change_summary %>% select(resource_taxon, n_rec, change_cat, n, pct),
   file.path(OUTPUT_DIR, "procurement_change_by_plant.csv"),
+  row.names = FALSE, fileEncoding = "UTF-8"
+)
+
+# ==============================================================================
+# 図28b: 生態景観類型ごとの調達地の変化
+# ------------------------------------------------------------------------------
+# 【2026-09-09追加】図28（植物別）と同じ調達地の変化（change_cat）を、
+# 植物ではなく調達地の生態景観類型（結果5、図24aと同じlandscape_all）で
+# 集計し直す。「二次林から採る植物ほど以前より広い範囲を探しに行くように
+# なったか」等、景観タイプと調達難易度の関係を見るための図。
+# 図24aと同じく1レコードが複数景観に由来する場合は両方に計上する
+# （separate_rowsで展開）。図28と同じくresource_df_full を使い、
+# 現在使われていない資源（使用停止）も対象に含める。
+# ------------------------------------------------------------------------------
+
+landscape_change_records <- resource_df_full %>%
+  filter(!is.na(change_cat), !is.na(landscape_all), landscape_all != "なし") %>%
+  select(-landscape_norm) %>%
+  separate_rows(landscape_all, sep = "\\|") %>%
+  rename(landscape_type = landscape_all) %>%
+  mutate(change_cat = factor(as.character(change_cat), levels = CHANGE_LEVELS))
+
+landscape_change_denom <- landscape_change_records %>%
+  count(landscape_type, name = "n_rec")
+
+cat("\n=== 図28b 対象:", nrow(landscape_change_records), "件（",
+    n_distinct(paste(landscape_change_records$festival, landscape_change_records$resource_raw)),
+    "件の資源が複数景観のため展開）/", nrow(landscape_change_denom), "景観類型 ===\n")
+
+landscape_change_summary <- landscape_change_records %>%
+  count(landscape_type, change_cat, .drop = FALSE) %>%
+  left_join(landscape_change_denom, by = "landscape_type") %>%
+  mutate(pct = n / n_rec)
+
+landscape_severity <- landscape_change_summary %>%
+  filter(change_cat %in% c("以前より広い", "使用停止")) %>%
+  group_by(landscape_type) %>%
+  summarise(severity = sum(pct), .groups = "drop") %>%
+  right_join(landscape_change_denom, by = "landscape_type") %>%
+  mutate(severity = replace_na(severity, 0)) %>%
+  arrange(severity)
+
+cat("\n=== 生態景観類型ごとの調達地変化（変化が大きい順） ===\n")
+print(as.data.frame(landscape_severity %>% arrange(desc(severity)) %>%
+  transmute(landscape_type, n_rec, 変化スコア = round(severity, 2))))
+
+landscape_change_summary <- landscape_change_summary %>%
+  mutate(land_label = paste0(landscape_type, "（", n_rec, "件）"),
+         land_label = factor(land_label,
+           levels = paste0(landscape_severity$landscape_type, "（", landscape_severity$n_rec, "件）")))
+
+p28b <- ggplot(landscape_change_summary, aes(x = land_label, y = pct, fill = change_cat)) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  scale_fill_manual(values = CHANGE_PAL, name = "調達地の変化", drop = FALSE) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "生態景観類型ごとの調達地の変化",
+    subtitle = paste0("資源レコード", nrow(landscape_change_records), "件（",
+                      n_distinct(paste(landscape_change_records$festival, landscape_change_records$resource_raw)),
+                      "件の資源が複数景観のため展開）。現在使われていない資源（使用停止）も含む\n",
+                      "並びは変化が大きい順（「以前より広い」＋「使用停止」の割合が高い順）"),
+    x = NULL, y = "資源レコードの割合"
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid.major.y = element_blank(),
+        legend.position = "bottom")
+
+ggsave(file.path(OUTPUT_DIR, "28b_procurement_change_by_landscape.png"), p28b,
+       width = 9, height = max(5, nrow(landscape_change_denom) * 0.5), dpi = 150)
+
+write.csv(
+  landscape_change_summary %>% select(landscape_type, n_rec, change_cat, n, pct),
+  file.path(OUTPUT_DIR, "procurement_change_by_landscape.csv"),
   row.names = FALSE, fileEncoding = "UTF-8"
 )
 
