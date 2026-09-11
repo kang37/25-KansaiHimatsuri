@@ -90,7 +90,7 @@ save_paper(p01_paper, "図-1_01_profile_age_and_resources.png",
 p03a_main_paper <- p03a_main + noti + pth +
   theme(plot.margin = margin(3, 10, 3, 3), axis.ticks.y = element_blank()) +
   labs(x = "使用する火祭りの割合") +
-  scale_x_continuous(labels = scales::percent, limits = c(0, 0.75),
+  scale_x_continuous(labels = scales::percent, limits = c(0, 0.70),
                       expand = expansion(mult = c(0, 0.03)))
 # 棒棒糖の色を青からダークグレーへ
 p03a_main_paper$layers[[1]]$aes_params$colour <- "gray30"  # geom_segment
@@ -106,17 +106,19 @@ daily_share_03_pp <- daily_share_03 %>%
 p03a_daily_paper <- ggplot(daily_share_03_pp, aes(x = pct, y = resource_taxon, fill = daily_label)) +
   geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
   scale_fill_manual(values = daily_colors_nonum, name = "日常利用", drop = FALSE) +
-  scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
+  scale_x_continuous(labels = scales::percent,
+                      expand = expansion(mult = c(0, 0.06))) +
   labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
         panel.grid.major.y = element_blank(),
-        plot.margin = margin(3, 5, 3, 10)) +
+        plot.margin = margin(3, 8, 3, 10)) +
   pth
 
-# 左図の横軸範囲を75%までに絞った分、右図（日常利用）に幅を多めに配分
+# 左図の横軸範囲を70%までに絞った分、左を狭く・右（日常利用）を広く配分。
+# 右図はexpandを少し足して「100%」の目盛文字が右端で切れないようにする。
 p03a_paper <- (p03a_main_paper + p03a_daily_paper +
-  patchwork::plot_layout(widths = c(2.1, 1.3), guides = "collect")) &
+  patchwork::plot_layout(widths = c(1.7, 1.5), guides = "collect")) &
   theme(legend.position = "bottom") &
   guides(fill = guide_legend(nrow = 1))
 
