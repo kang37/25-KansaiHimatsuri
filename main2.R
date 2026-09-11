@@ -3564,6 +3564,166 @@ write.csv(
 )
 
 # ==============================================================================
+# 図30: 景観の多様性 × 管理活動タイプの多様性
+# ------------------------------------------------------------------------------
+# 【仮説】調達先の景観タイプが単一（例：水田のみ）だと、その資源を維持する
+# ための活動も単調になりやすい（水田の世話だけで完結する）。逆に複数の景観
+# タイプ（二次林・竹林・水田等）にまたがって資源を調達する祭りは、必要な
+# 活動の種類も自然と多様になる（伐採・採取・栽培・境内管理等が併存）はず、
+# という仮説を検証する。
+#
+# 【指標の作り方】
+#   x = n_habitats（図12と同じ。調達先の景観タイプ数）
+#   y = n_activity_types（結果6 mgmt_note の自由記述から抽出した活動タイプ数）
+#     mgmt_note は【対象・主体・活動】の構造化要約＋自由記述で、資源ごとの
+#     活動が「；」区切りで並ぶ（例：「サカキ等：保存会が植栽・保全；稲わら：
+#     氏子会が神田で栽培」）。個々の資源ではなく祭り全体でどれだけ多様な
+#     "活動の種類"が語られているかを見るため、資源をまたいでテキスト全体
+#     から活動キーワードを拾い、ユニーク数を数える。
+# ------------------------------------------------------------------------------
+
+ACTIVITY_VOCAB <- list(
+  c("栽培・植栽", "栽培|植栽|播種|育樹|植樹|植え|育成|種まき|苗"),
+  c("採取・伐採", "採取|伐採|刈り|刈取|切り出し|伐り|間伐"),
+  c("生息地保全・整備", "保全|整備|ネットワーク|社叢|境内管理|山麓|循環利用"),
+  c("保管・加工", "保管|乾燥|加工|備蓄|貯蔵"),
+  c("購入・委託", "購入|委託|発注|業者|仕入")
+)
+
+code_activity <- function(x) {
+  s <- str_replace_all(as.character(x), "[\r\n]+", " ")
+  if (is.na(s) || str_trim(s) %in% c("", "NA", "ない", "なし")) return(NA_character_)
+  ty <- character(0)
+  for (r in ACTIVITY_VOCAB) if (str_detect(s, r[2])) ty <- c(ty, r[1])
+  if (!length(ty)) return(NA_character_)
+  paste(ty, collapse = "|")
+}
+
+festival_engagement <- festival_engagement %>%
+  mutate(
+    activity_types   = vapply(mgmt_note, code_activity, character(1)),
+    n_activity_types = ifelse(is.na(activity_types), 0L,
+                              lengths(str_split(activity_types, "\\|")))
+  )
+
+cat("\n=== 管理活動タイプの抽出結果（祭り別）===\n")
+print(as.data.frame(festival_engagement %>%
+  select(festival, mgmt_label, n_activity_types, activity_types)))
+
+div30 <- habitat_diversity %>%
+  inner_join(festival_engagement %>% select(festival, pref, n_activity_types, mgmt_score),
+             by = "festival") %>%
+  left_join(resource_diversity, by = "festival")
+
+cor30 <- cor.test(div30$n_habitats, div30$n_activity_types, method = "spearman",
+                  exact = FALSE)
+cat("\n=== 景観多様性 vs 管理活動タイプ数 相関（Spearman）===\n")
+cat("rho =", round(cor30$estimate, 3), " p =", round(cor30$p.value, 3),
+    " n =", nrow(div30), "\n")
+
+set.seed(20260911)
+p30 <- ggplot(div30, aes(x = n_habitats, y = n_activity_types)) +
+  geom_smooth(method = "lm", se = TRUE, color = "gray50", linetype = "dashed",
+              linewidth = 0.8) +
+  geom_jitter(aes(color = pref, size = n_resources), width = 0.08, height = 0.08,
+              alpha = 0.85) +
+  geom_text_repel(aes(label = festival), size = 2.7, max.overlaps = 25,
+                  family = "HiraginoSans-W3") +
+  scale_x_continuous(breaks = 1:6) +
+  scale_y_continuous(breaks = 0:5) +
+  scale_color_manual(values = PREF_PAL, name = "都道府県") +
+  scale_size_continuous(range = c(2, 7), name = "植物資源種数") +
+  labs(
+    title = "景観の多様性は管理活動の多様性につながるか",
+    subtitle = paste0("Spearman rho = ", round(cor30$estimate, 2),
+                      "（p = ", round(cor30$p.value, 3), ", n = ", nrow(div30), "）\n",
+                      "x = 調達先の景観タイプ数（図12と同じ）　",
+                      "y = 結果6の自由記述から抽出した管理活動タイプ数（栽培/採取/生息地保全/保管/購入の最大5種）"),
+    x = "景観タイプ数", y = "管理活動タイプ数"
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(file.path(OUTPUT_DIR, "30_habitat_diversity_x_activity_types.png"), p30,
+       width = 10, height = 7, dpi = 150)
+
+write.csv(
+  festival_engagement %>% select(pref, festival, mgmt_label, activity_types, n_activity_types) %>%
+    left_join(habitat_diversity, by = "festival"),
+  file.path(OUTPUT_DIR, "activity_types_by_festival.csv"),
+  row.names = FALSE, fileEncoding = "UTF-8"
+)
+
+# ==============================================================================
+# 図31: 調達地の変化 × 調達方法 — 単一景観資源（稲）と多景観資源の対比
+# ------------------------------------------------------------------------------
+# 【問い】水田が減っても稲わらが要る場合、①神社・氏子が自ら作る（神田等。
+# 調達距離＝「以前より近い」、嵌入度＝自給側）か、②より遠方から調達する
+# （調達距離＝「以前より広い」、嵌入度＝購入側）かのどちらに転ぶか。
+# また、この分岐は「稲（単一景観＝水田のみ）」に特有か、それとも森林系
+# （二次林・人工林・竹林など複数景観にまたがる資源）でも同様に起こるか。
+# ------------------------------------------------------------------------------
+
+change_embed <- resource_df %>%
+  filter(!is.na(change_cat), !is.na(embed_score), change_cat != "使用停止") %>%
+  mutate(
+    resource_group = case_when(
+      resource_taxon %in% c("稲", "稲（もち米）", "稲（赤米）") ~ "稲わら（水田のみ）",
+      resource_taxon %in% c("アカマツ", "クロマツ", "ヒノキ", "スギ", "タケ類",
+                            "ササ", "シイノキ", "雑木", "他の広葉樹類") ~ "森林系（二次林・人工林・竹林等）",
+      TRUE ~ "その他"
+    ),
+    embed_label3 = factor(embed_score, levels = c(3, 2, 1),
+                          labels = c("自ら採取・栽培", "地域内で無償", "購入・地域外"))
+  )
+
+cat("\n=== 調達地の変化 × 嵌入度（稲わら vs 森林系）===\n")
+print(table(change_embed %>% filter(resource_group != "その他") %>%
+              select(resource_group, change_cat, embed_label3) %>%
+              mutate(change_cat = droplevels(change_cat))))
+
+p31 <- change_embed %>%
+  filter(resource_group != "その他") %>%
+  mutate(change_cat = droplevels(change_cat)) %>%
+  count(resource_group, change_cat, embed_label3) %>%
+  group_by(resource_group, change_cat) %>%
+  mutate(pct = n / sum(n)) %>%
+  ungroup() %>%
+  ggplot(aes(x = change_cat, y = pct, fill = embed_label3)) +
+  geom_col(position = "stack", width = 0.65) +
+  geom_text(aes(label = n), position = position_stack(vjust = 0.5), size = 3,
+            family = "HiraginoSans-W3", color = "white") +
+  facet_wrap(~ resource_group) +
+  scale_fill_manual(values = c("自ら採取・栽培" = "#1A6A1A",
+                               "地域内で無償"   = "#74C476",
+                               "購入・地域外"   = "#D62728"),
+                    name = "調達方法") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "調達地が遠くなった資源は、自給に転じるか購入に転じるか",
+    subtitle = paste0("稲わら（水田という単一の景観タイプに依存）と、",
+                      "森林系（複数の景観タイプにまたがる）を対比\n",
+                      "セル内の数字は記録数。「以前より広い」＝地元では足りず調達範囲が拡大した資源"),
+    x = "調達地の変化", y = "記録の割合"
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"),
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 20, hjust = 1))
+
+ggsave(file.path(OUTPUT_DIR, "31_change_x_embed_rice_vs_forest.png"), p31,
+       width = 9, height = 6.5, dpi = 150)
+
+write.csv(
+  change_embed %>%
+    mutate(pref = unname(FESTIVAL_PREF[festival])) %>%
+    select(pref, festival, resource_taxon, resource_group, landscape_norm,
+           change_cat, embed_score, embed_label3),
+  file.path(OUTPUT_DIR, "change_x_embed_detail.csv"),
+  row.names = FALSE, fileEncoding = "UTF-8"
+)
+
+# ==============================================================================
 # 選定理由コーディング仕様書（Excel）
 # ------------------------------------------------------------------------------
 # code_reason()/REASON_RULES による10類型コーディングの完全な仕様書。
