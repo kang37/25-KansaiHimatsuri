@@ -59,6 +59,9 @@ p01a_paper <- p01a_age + noti +
 # 年齢数値ラベル（layers[[5]]）を削除。中央（左パネル）の府県名は
 # strip.text.y=element_blank()（p01a_age自身の設定を継承）のまま維持。
 p01a_paper$layers[[5]] <- NULL
+# 協力者が1名のみの祭りは「平均」に意味がないため、平均の縦線
+# （geom_errorbar、layers[[3]]）を2名以上の祭りに限定する。
+p01a_paper$layers[[3]]$data <- age_summary_f %>% filter(n_inf > 1)
 # 点を「黒縁・内部半透明」に変更（shape=21で塗りと縁を分離）
 p01a_paper$layers[[4]]$aes_params$shape  <- 21
 p01a_paper$layers[[4]]$aes_params$colour <- "black"
@@ -85,7 +88,7 @@ save_paper(p01_paper, "図-1_01_profile_age_and_resources.png",
 # ==============================================================================
 
 p03a_main_paper <- p03a_main + noti + pth +
-  theme(plot.margin = margin(3, 10, 3, 3)) +
+  theme(plot.margin = margin(3, 10, 3, 3), axis.ticks.y = element_blank()) +
   labs(x = "使用する火祭りの割合") +
   scale_x_continuous(labels = scales::percent, limits = c(0, 0.75),
                       expand = expansion(mult = c(0, 0.03)))
