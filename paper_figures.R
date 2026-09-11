@@ -586,3 +586,125 @@ save_paper(p27a_s, "図-12_27a_topic_x_management_8cm.png",
 cat("\n=== 論文用図表", length(list.files(PAPER_DIR, pattern = "\\.png$")), "枚を",
     PAPER_DIR, "に出力 ===\n")
 
+# ==============================================================================
+# 最終セット: 12図を新フォルダに統合出力
+# ------------------------------------------------------------------------------
+# 8cm幅に収まる図（1,2,6,7,8,10,11,12）はその版を、収まらない図
+# （3,4,5,9）は元の幅の版を採用。全12図の文字サイズを図-11の8cm版に統一し、
+# ヒートマップ系6図（4,5,6,9,10,12：geom_tileを使う図）はセル罫線を細い黒に
+# 変更、外枠（panel.border）と目盛線（axis.ticks）を除去する。
+# ==============================================================================
+
+FINAL_DIR <- file.path(OUTPUT_DIR, "paper_figures_8cm")
+dir.create(FINAL_DIR, showWarnings = FALSE, recursive = TRUE)
+
+# 図-11の8cm版と同じ文字サイズに統一
+F_AX_TEXT  <- 4.6
+F_AX_TITLE <- 5.0
+F_LG_TEXT  <- 4.2
+F_LG_TITLE <- 4.6
+F_ST_TEXT  <- 4.6
+
+final_text_theme <- theme(
+  axis.text    = element_text(size = F_AX_TEXT),
+  axis.title   = element_text(size = F_AX_TITLE),
+  legend.text  = element_text(size = F_LG_TEXT),
+  legend.title = element_text(size = F_LG_TITLE),
+  strip.text   = element_text(size = F_ST_TEXT)
+)
+
+# ヒートマップ共通の枠スタイル：外枠と目盛線を消す
+heat_frame_theme <- theme(panel.border = element_blank(), axis.ticks = element_blank())
+
+# geom_tileレイヤーの罫線を細い黒に変更（図-6のスタイルを基に、さらに細く・黒く）
+recolor_tiles <- function(p, colour = "black", linewidth = 0.15) {
+  for (i in seq_along(p$layers)) {
+    if (inherits(p$layers[[i]]$geom, "GeomTile")) {
+      p$layers[[i]]$aes_params$colour   <- colour
+      p$layers[[i]]$aes_params$linewidth <- linewidth
+    }
+  }
+  p
+}
+
+save_final <- function(p, name, width, height, dpi = 900) {
+  path <- file.path(FINAL_DIR, name)
+  ggsave(path, p, width = width, height = height, dpi = dpi, limitsize = FALSE)
+  py <- sprintf(
+    "from PIL import Image; im = Image.open('%s'); im.save('%s', dpi=(%d, %d))",
+    path, path, dpi, dpi
+  )
+  status <- system2("python3", args = c("-c", shQuote(py)))
+  if (status != 0) warning("DPI埋め込みに失敗しました: ", name)
+  cat("final saved:", name, sprintf("(%.2f x %.2f in)\n", width, height))
+}
+
+# ---- 図-1（8cm版、非ヒートマップ）----
+p01_final <- p01_paper_s & final_text_theme
+save_final(p01_final, "図-1_01_profile_age_and_resources.png",
+           width = w8, height = 5.2)
+
+# ---- 図-2（8cm版、非ヒートマップ）----
+p02_final <- p03a_paper_s + final_text_theme
+save_final(p02_final, "図-2_03a_plant_prevalence_weighted.png",
+           width = w8, height = 3.4)
+
+# ---- 図-3（8cm不可、元の幅のまま。非ヒートマップ＝散布バブル図）----
+p03_final <- p19d_paper + final_text_theme
+save_final(p03_final, "図-3_19d_plant_x_part.png",
+           width = 6.2, height = max(6, length(part_taxon_order) * 0.34))
+
+# ---- 図-4（8cm不可、元の幅のまま。ヒートマップ）----
+p04_final <- p19c_paper + final_text_theme
+p04_final <- recolor_tiles(p04_final) + heat_frame_theme
+save_final(p04_final, "図-4_19c_plant_x_use.png",
+           width = 8.2, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.20))
+
+# ---- 図-5（8cm不可、元の幅のまま。左パネルのみヒートマップ）----
+p17b_main_final <- recolor_tiles(p17b_main_paper) + heat_frame_theme + final_text_theme
+p17b_subst_final <- p17b_subst_paper + final_text_theme
+
+p05_final <- (p17b_main_final + p17b_subst_final +
+  patchwork::plot_layout(widths = c(3, 1), guides = "collect")) &
+  theme(legend.position = "bottom", legend.box = "vertical")
+save_final(p05_final, "図-5_17b_reason_by_plant.png",
+           width = 7.8, height = max(7.0, nrow(taxon_denom) * 0.22 + 0.6))
+
+# ---- 図-6（8cm版、ヒートマップ）----
+p06_final <- recolor_tiles(p03b_s) + heat_frame_theme + final_text_theme
+save_final(p06_final, "図-6_03b_plant_prevalence_by_pref.png",
+           width = w8, height = 6.8)
+
+# ---- 図-7（8cm版、非ヒートマップ）----
+p07_final <- p23c_s + final_text_theme
+save_final(p07_final, "図-7_23c_method_type_by_plant.png",
+           width = w8, height = 3.3)
+
+# ---- 図-8（8cm版、非ヒートマップ）----
+p08_final <- p28_s + final_text_theme
+save_final(p08_final, "図-8_28_procurement_change_by_plant.png",
+           width = w8, height = 3.4)
+
+# ---- 図-9（8cm不可、元の幅のまま。ヒートマップ）----
+p09_final <- recolor_tiles(p29_paper) + heat_frame_theme + final_text_theme
+save_final(p09_final, "図-9_29_plant_x_method_x_change.png",
+           width = 9.0, height = max(6, length(taxon_order_29) * 0.19))
+
+# ---- 図-10（8cm版、ヒートマップ）----
+p10_final <- recolor_tiles(p24a_s) + heat_frame_theme + final_text_theme
+save_final(p10_final, "図-10_24a_plant_x_landscape.png",
+           width = w8, height = 4.5)
+
+# ---- 図-11（8cm版、非ヒートマップ。文字サイズの基準そのもの）----
+p11_final <- p28b_s + final_text_theme
+save_final(p11_final, "図-11_28b_procurement_change_by_landscape.png",
+           width = w8, height = 1.9)
+
+# ---- 図-12（8cm版、ヒートマップ）----
+p12_final <- recolor_tiles(p27a_s) + heat_frame_theme + final_text_theme
+save_final(p12_final, "図-12_27a_topic_x_management.png",
+           width = w8, height = 3.0)
+
+cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$")), "枚を",
+    FINAL_DIR, "に出力 ===\n")
+
