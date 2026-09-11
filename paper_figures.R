@@ -639,30 +639,69 @@ save_final <- function(p, name, width, height, dpi = 900) {
   cat("final saved:", name, sprintf("(%.2f x %.2f in)\n", width, height))
 }
 
-# ---- 図-1（8cm版、非ヒートマップ）----
-p01_final <- p01_paper_s & final_text_theme
+# ---- 図-1（8cm版、非ヒートマップ）文字を拡大 ----
+p01_final <- p01_paper_s &
+  theme(axis.text = element_text(size = 5.6),
+        axis.title = element_text(size = 6.0),
+        strip.text = element_text(size = 5.6))
 save_final(p01_final, "図-1_01_profile_age_and_resources.png",
-           width = w8, height = 5.2)
+           width = w8, height = 5.8)
 
 # ---- 図-2（8cm版、非ヒートマップ）----
 p02_final <- p03a_paper_s + final_text_theme
 save_final(p02_final, "図-2_03a_plant_prevalence_weighted.png",
            width = w8, height = 3.4)
 
-# ---- 図-3（8cm不可、元の幅のまま。非ヒートマップ＝散布バブル図）----
-p03_final <- p19d_paper + final_text_theme
+# ---- 図-3（8cm不可、元の幅のまま。非ヒートマップ＝散布バブル図）文字を拡大 ----
+p03_final <- p19d_paper +
+  theme(axis.text = element_text(size = 7.0),
+        axis.title = element_text(size = 7.5),
+        legend.text = element_text(size = 7.0),
+        legend.title = element_text(size = 7.5))
 save_final(p03_final, "図-3_19d_plant_x_part.png",
            width = 6.2, height = max(6, length(part_taxon_order) * 0.34))
 
 # ---- 図-4（8cm不可、元の幅のまま。ヒートマップ）----
-p04_final <- p19c_paper + final_text_theme
-p04_final <- recolor_tiles(p04_final) + heat_frame_theme
+# 値がないセルにも罫線を表示するため、行×列の全組み合わせに展開してから描画
+mat_19c_complete <- use_long %>%
+  count(resource_taxon, use_cat) %>%
+  complete(resource_taxon = taxon_order_19c, use_cat = use_order_19c, fill = list(n = 0)) %>%
+  left_join(taxon_denom_19c, by = "resource_taxon") %>%
+  mutate(pct = n / n_taxon,
+         resource_taxon = factor(resource_taxon, levels = rev(taxon_order_19c)),
+         use_cat = factor(use_cat, levels = use_order_19c))
+
+p04_final <- ggplot(mat_19c_complete, aes(x = use_cat, y = resource_taxon,
+                                           fill = ifelse(pct > 0, pct, NA))) +
+  geom_tile(color = "black", linewidth = 0.15) +
+  geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1), "")),
+            size = 2.2, family = "HiraginoSans-W3", color = "gray15") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
+                      labels = scales::percent, name = "その植物の資源レコードに\n占める割合") +
+  labs(x = NULL, y = NULL) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 30, hjust = 1)) +
+  heat_frame_theme + final_text_theme
 save_final(p04_final, "図-4_19c_plant_x_use.png",
            width = 8.2, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.20))
 
 # ---- 図-5（8cm不可、元の幅のまま。左パネルのみヒートマップ）----
-p17b_main_final <- recolor_tiles(p17b_main_paper) + heat_frame_theme + final_text_theme
-p17b_subst_final <- p17b_subst_paper + final_text_theme
+# 文字サイズをセル内の百分比（geom_textのsize=2.9mm≒8.3pt）に揃える。
+# 代替可能性の凡例は「代替品として使用」（新規に代替品として使われる植物）を
+# 最後に固定表示（breaksを明示し、position_stack由来の並び崩れを防ぐ）。
+F5_TEXT  <- 8.3
+F5_TITLE <- 8.8
+p17b_main_final <- recolor_tiles(p17b_main_paper) + heat_frame_theme +
+  theme(axis.text = element_text(size = F5_TEXT),
+        axis.title = element_text(size = F5_TITLE),
+        legend.text = element_text(size = F5_TEXT),
+        legend.title = element_text(size = F5_TITLE))
+p17b_subst_final <- p17b_subst_paper +
+  scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE, breaks = SUBST4) +
+  theme(axis.text = element_text(size = F5_TEXT),
+        axis.title = element_text(size = F5_TITLE),
+        legend.text = element_text(size = F5_TEXT),
+        legend.title = element_text(size = F5_TITLE))
 
 p05_final <- (p17b_main_final + p17b_subst_final +
   patchwork::plot_layout(widths = c(3, 1), guides = "collect")) &
@@ -670,8 +709,12 @@ p05_final <- (p17b_main_final + p17b_subst_final +
 save_final(p05_final, "図-5_17b_reason_by_plant.png",
            width = 7.8, height = max(7.0, nrow(taxon_denom) * 0.22 + 0.6))
 
-# ---- 図-6（8cm版、ヒートマップ）----
-p06_final <- recolor_tiles(p03b_s) + heat_frame_theme + final_text_theme
+# ---- 図-6（8cm版、ヒートマップ）文字を拡大 ----
+p06_final <- recolor_tiles(p03b_s) + heat_frame_theme +
+  theme(axis.text = element_text(size = 6.5),
+        axis.title = element_text(size = 7.0),
+        legend.text = element_text(size = 6.2),
+        legend.title = element_text(size = 6.6))
 save_final(p06_final, "図-6_03b_plant_prevalence_by_pref.png",
            width = w8, height = 6.8)
 
@@ -680,30 +723,81 @@ p07_final <- p23c_s + final_text_theme
 save_final(p07_final, "図-7_23c_method_type_by_plant.png",
            width = w8, height = 3.3)
 
-# ---- 図-8（8cm版、非ヒートマップ）----
+# ---- 図-8（8cm版、非ヒートマップ）「吉祥草」（TAXON_ORDER外の1件のみの
+#      記録で、他図には登場しない）を除外 ----
 p08_final <- p28_s + final_text_theme
+p08_final$data <- p08_final$data %>% filter(resource_taxon != "吉祥草")
 save_final(p08_final, "図-8_28_procurement_change_by_plant.png",
            width = w8, height = 3.4)
 
 # ---- 図-9（8cm不可、元の幅のまま。ヒートマップ）----
-p09_final <- recolor_tiles(p29_paper) + heat_frame_theme + final_text_theme
+# 値がないセルにも罫線を表示するため、行×小図×列の全組み合わせに展開
+mat_29_complete <- change_method_df %>%
+  count(resource_taxon, method_type, change_cat, name = "n") %>%
+  complete(resource_taxon = taxon_order_29,
+           method_type = levels(change_method_df$method_type),
+           change_cat = levels(change_method_df$change_cat),
+           fill = list(n = 0)) %>%
+  # complete()はfactorの列順を保持しないことがあるため、明示的に再設定
+  mutate(resource_taxon = factor(resource_taxon, levels = rev(taxon_order_29)),
+         method_type = factor(method_type, levels = levels(change_method_df$method_type)),
+         change_cat = factor(change_cat, levels = levels(change_method_df$change_cat)))
+
+p09_final <- ggplot(mat_29_complete, aes(x = change_cat, y = resource_taxon, fill = ifelse(n > 0, n, NA))) +
+  geom_tile(color = "black", linewidth = 0.15) +
+  geom_text(aes(label = ifelse(n > 0, n, "")), size = 2.9, family = "HiraginoSans-W3", color = "gray15") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white", name = "記録数") +
+  scale_y_discrete(drop = FALSE) +
+  facet_wrap(~ method_type, nrow = 1) +
+  labs(x = NULL, y = NULL) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(face = "bold")) +
+  heat_frame_theme + final_text_theme
 save_final(p09_final, "図-9_29_plant_x_method_x_change.png",
            width = 9.0, height = max(6, length(taxon_order_29) * 0.19))
 
-# ---- 図-10（8cm版、ヒートマップ）----
-p10_final <- recolor_tiles(p24a_s) + heat_frame_theme + final_text_theme
+# ---- 図-10（8cm版、ヒートマップ）文字を拡大 + 図-6と同じく
+#      値がないセルにも罫線を表示（行×列を完全展開）----
+mat_24a_complete <- landscape_records %>%
+  distinct(festival, resource_taxon, landscape_type) %>%
+  count(resource_taxon, landscape_type, name = "n") %>%
+  complete(resource_taxon = unique(landscape_records$resource_taxon),
+           landscape_type = unique(landscape_records$landscape_type),
+           fill = list(n = 0)) %>%
+  left_join(taxon_festival_denom_24, by = "resource_taxon") %>%
+  mutate(pct = ifelse(!is.na(n_taxon_fest) & n_taxon_fest > 0, n / n_taxon_fest, NA_real_),
+         cell_label = ifelse(n > 0, paste0(n, "/", n_taxon_fest), ""),
+         resource_taxon = factor(resource_taxon, levels = taxon_order_24_pp),
+         landscape_type = factor(landscape_type, levels = land_order_24_pp))
+
+p10_final <- ggplot(mat_24a_complete, aes(x = landscape_type, y = resource_taxon, fill = pct)) +
+  geom_tile(color = "black", linewidth = 0.15) +
+  geom_text(aes(label = cell_label), size = 1.6, family = "HiraginoSans-W3", color = "gray15") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
+                      labels = scales::percent, name = "その植物を使う祭りのうち\nその景観に由来する割合") +
+  labs(x = NULL, y = NULL) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
+  heat_frame_theme +
+  theme(axis.text = element_text(size = 5.0),
+        axis.title = element_text(size = 5.4),
+        legend.text = element_text(size = 4.6),
+        legend.title = element_text(size = 5.0, lineheight = 0.9))
+# 【注】文字拡大により軸ラベルが幅を取るため、9列のタイル部分を確保する
+# には8cm(w8)では足りない。字が重ならない最低限としてやや幅を広げる。
 save_final(p10_final, "図-10_24a_plant_x_landscape.png",
-           width = w8, height = 4.5)
+           width = 3.7, height = 4.8)
 
 # ---- 図-11（8cm版、非ヒートマップ。文字サイズの基準そのもの）----
 p11_final <- p28b_s + final_text_theme
 save_final(p11_final, "図-11_28b_procurement_change_by_landscape.png",
            width = w8, height = 1.9)
 
-# ---- 図-12（8cm版、ヒートマップ）----
+# ---- 図-12（8cm版、ヒートマップ）高さを低くする ----
 p12_final <- recolor_tiles(p27a_s) + heat_frame_theme + final_text_theme
 save_final(p12_final, "図-12_27a_topic_x_management.png",
-           width = w8, height = 3.0)
+           width = w8, height = 2.5)
 
 cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$")), "枚を",
     FINAL_DIR, "に出力 ===\n")
