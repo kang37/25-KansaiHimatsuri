@@ -56,6 +56,11 @@ save_paper <- function(p, name, width, height, dpi = 600) {
 p01a_paper <- p01a_age + noti +
   theme(axis.text.x = element_text(size = AX_TEXT),
         axis.text.y = element_text(size = AX_TEXT))
+# 【バグ修正】元のscale_y_continuous(limits=c(25,100))は最年少22歳（雲ケ畑
+# 松上げの協力者2名）を範囲外として無言で除外していた（geom_point/geom_line
+# 両方で"Removed 2 rows"警告が出ていた）。下限を20に広げてデータを保持する。
+p01a_paper <- p01a_paper +
+  scale_y_continuous(limits = c(20, 100), breaks = seq(30, 90, 20))
 # 年齢数値ラベル（layers[[5]]）を削除。中央（左パネル）の府県名は
 # strip.text.y=element_blank()（p01a_age自身の設定を継承）のまま維持。
 p01a_paper$layers[[5]] <- NULL
@@ -87,8 +92,16 @@ save_paper(p01_paper, "図-1_01_profile_age_and_resources.png",
 # 図-2 = 03a_plant_prevalence_weighted
 # ==============================================================================
 
+# 図-2は再度の拡大要望があったため、共通サイズ（pth）よりさらに一回り大きくする
+AX_TEXT_2 <- AX_TEXT + 2.2
+AX_TITLE_2 <- AX_TITLE + 2.2
+LG_TEXT_2 <- LG_TEXT + 2.2
+LG_TITLE_2 <- LG_TITLE + 2.2
+
 p03a_main_paper <- p03a_main + noti + pth +
-  theme(plot.margin = margin(3, 10, 3, 3), axis.ticks.y = element_blank()) +
+  theme(plot.margin = margin(3, 10, 3, 3), axis.ticks.y = element_blank(),
+        axis.text = element_text(size = AX_TEXT_2),
+        axis.title = element_text(size = AX_TITLE_2)) +
   labs(x = "使用する火祭りの割合") +
   scale_x_continuous(labels = scales::percent, limits = c(0, 0.70),
                       expand = expansion(mult = c(0, 0.03)))
@@ -112,14 +125,20 @@ p03a_daily_paper <- ggplot(daily_share_03_pp, aes(x = pct, y = resource_taxon, f
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
         panel.grid.major.y = element_blank(),
-        plot.margin = margin(3, 8, 3, 10)) +
+        plot.margin = margin(3, 8, 3, 10),
+        axis.text.x = element_text(size = AX_TEXT_2)) +
   pth
+
+# 凡例（legend.text/legend.title）も拡大
+p03a_legend_theme <- theme(legend.text = element_text(size = LG_TEXT_2),
+                           legend.title = element_text(size = LG_TITLE_2))
 
 # 左図の横軸範囲を70%までに絞った分、左を狭く・右（日常利用）を広く配分。
 # 右図はexpandを少し足して「100%」の目盛文字が右端で切れないようにする。
 p03a_paper <- (p03a_main_paper + p03a_daily_paper +
   patchwork::plot_layout(widths = c(1.7, 1.5), guides = "collect")) &
   theme(legend.position = "bottom") &
+  p03a_legend_theme &
   guides(fill = guide_legend(nrow = 1))
 
 save_paper(p03a_paper, "図-2_03a_plant_prevalence_weighted.png",
