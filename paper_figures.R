@@ -44,9 +44,18 @@ pth <- theme(
 noti <- labs(title = NULL, subtitle = NULL, caption = NULL)
 
 save_paper <- function(p, name, width, height, dpi = 600) {
-  ggsave(file.path(PAPER_DIR, name), p, width = width, height = height,
-         dpi = dpi, limitsize = FALSE)
-  cat("saved:", name, sprintf("(%.2f x %.2f in)\n", width, height))
+  path <- file.path(PAPER_DIR, name)
+  ggsave(path, p, width = width, height = height, dpi = dpi, limitsize = FALSE)
+  # ggsave()が書き出すPNGにはDPI情報（pHYsチャンク）が埋め込まれないため、
+  # Word等に貼り付けると画面用の96dpiとして解釈され、実寸よりはるかに
+  # 大きく表示されてしまう。Pillowで正しいDPIを書き込み直す。
+  py <- sprintf(
+    "from PIL import Image; im = Image.open('%s'); im.save('%s', dpi=(%d, %d))",
+    path, path, dpi, dpi
+  )
+  status <- system2("python3", args = c("-c", shQuote(py)))
+  if (status != 0) warning("DPI埋め込みに失敗しました: ", name)
+  cat("saved:", name, sprintf("(%.2f x %.2f in, %d dpi embedded)\n", width, height, dpi))
 }
 
 # ==============================================================================
@@ -143,6 +152,45 @@ p03a_paper <- (p03a_main_paper + p03a_daily_paper +
 
 save_paper(p03a_paper, "図-2_03a_plant_prevalence_weighted.png",
            width = 5.8, height = max(5, nrow(prev_plot) * 0.20))
+
+# ---- テスト出力: 幅8cm（論文の1カラム幅相当）・高解像度版 ----
+# 縦横比は元の5.8in x 6.8inと同じに保つ
+w8 <- 8 / 2.54
+save_paper(p03a_paper, "図-2_03a_plant_prevalence_weighted_8cm.png",
+           width = w8, height = w8 * (6.8 / 5.8), dpi = 900)
+
+# ---- テスト2: 幅8cmで文字を縮小し、かつ高さは幅に連動させず
+#      34行分の行間を確保する（前回は高さも比例縮小したため縦方向に
+#      文字が重なった。今回は高さを元の6.8inのまま据え置く） ----
+AX_TEXT_S  <- 4.6
+AX_TITLE_S <- 5.0
+LG_TEXT_S  <- 4.2
+LG_TITLE_S <- 4.6
+
+p03a_main_s <- p03a_main_paper +
+  theme(axis.text = element_text(size = AX_TEXT_S),
+        axis.title = element_text(size = AX_TITLE_S))
+# 棒棒糖の線・点を縮小（行間を詰めても図形同士がぶつからないように）
+p03a_main_s$layers[[1]]$aes_params$linewidth <- 0.4  # geom_segment
+p03a_main_s$layers[[2]]$aes_params$size      <- 1.4  # geom_point
+
+p03a_daily_s <- p03a_daily_paper +
+  theme(axis.text.x = element_text(size = AX_TEXT_S))
+# 積み上げ棒を細く
+p03a_daily_s$layers[[1]]$aes_params$width <- 0.5
+
+p03a_paper_s <- (p03a_main_s + p03a_daily_s +
+  patchwork::plot_layout(widths = c(1.7, 1.5), guides = "collect")) &
+  theme(legend.position = "bottom",
+        legend.box.spacing = unit(2, "pt"),
+        legend.margin = margin(0, 0, 0, 0),
+        legend.key.size = unit(8, "pt")) &
+  theme(legend.text = element_text(size = LG_TEXT_S),
+        legend.title = element_text(size = LG_TITLE_S)) &
+  guides(fill = guide_legend(nrow = 1))
+
+save_paper(p03a_paper_s, "図-2_03a_plant_prevalence_weighted_8cm_smallfont.png",
+           width = w8, height = 3.4, dpi = 900)
 
 # ==============================================================================
 # 図-3 = 19d_plant_x_part
@@ -425,3 +473,4 @@ save_paper(p27a_paper, "図-12_27a_topic_x_management.png",
 
 cat("\n=== 論文用図表", length(list.files(PAPER_DIR, pattern = "\\.png$")), "枚を",
     PAPER_DIR, "に出力 ===\n")
+
