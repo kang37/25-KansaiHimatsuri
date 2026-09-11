@@ -97,6 +97,28 @@ p01_paper <- (p01a_paper + p01b_paper +
 save_paper(p01_paper, "図-1_01_profile_age_and_resources.png",
            width = 4.6, height = 9.2)
 
+# ---- 8cm幅版 ----
+w8 <- 8 / 2.54
+AX_TEXT_S1 <- 4.6
+
+p01a_s <- p01a_paper +
+  theme(axis.text.x = element_text(size = AX_TEXT_S1),
+        axis.text.y = element_text(size = AX_TEXT_S1))
+p01a_s$layers[[4]]$aes_params$stroke <- 0.5
+
+p01b_s <- p01b_paper +
+  theme(axis.text.x = element_text(size = AX_TEXT_S1),
+        strip.text.y = element_text(size = AX_TEXT_S1, angle = -90))
+p01b_s$layers[[2]]$aes_params$size <- 2.0
+
+p01_paper_s <- (p01a_s + p01b_s +
+  patchwork::plot_layout(widths = c(1, 0.62))) &
+  theme(plot.margin = margin(2, 3, 2, 2),
+        axis.title = element_text(size = 5.2))
+
+save_paper(p01_paper_s, "図-1_01_profile_age_and_resources_8cm.png",
+           width = w8, height = 5.2, dpi = 900)
+
 # ==============================================================================
 # 図-2 = 03a_plant_prevalence_weighted
 # ==============================================================================
@@ -154,8 +176,7 @@ save_paper(p03a_paper, "図-2_03a_plant_prevalence_weighted.png",
            width = 5.8, height = max(5, nrow(prev_plot) * 0.20))
 
 # ---- テスト出力: 幅8cm（論文の1カラム幅相当）・高解像度版 ----
-# 縦横比は元の5.8in x 6.8inと同じに保つ
-w8 <- 8 / 2.54
+# 縦横比は元の5.8in x 6.8inと同じに保つ（w8は図-1の節で定義済み）
 save_paper(p03a_paper, "図-2_03a_plant_prevalence_weighted_8cm.png",
            width = w8, height = w8 * (6.8 / 5.8), dpi = 900)
 
@@ -217,6 +238,10 @@ p19d_paper$layers[[1]]$aes_params$stroke <- 0.7
 save_paper(p19d_paper, "図-3_19d_plant_x_part.png",
            width = 6.2, height = max(6, length(part_taxon_order) * 0.34))
 
+# 【8cm版は省略】x軸の「部位」カテゴリーが21列あり、8cm幅では列ごとに
+# 1.5mm程度しか割り当てられず、文字サイズを極限まで縮めても軸ラベルが
+# 判読不能になる。半ページ幅に収める案（6.2in）を維持する。
+
 # ==============================================================================
 # 図-4 = 19c_plant_x_use
 # ==============================================================================
@@ -232,6 +257,9 @@ p19c_paper$layers[[2]]$aes_params$size <- 2.2   # 百分比文字は逆に縮小
 # （他の図より広いが、詰めると数値ラベルが列間で衝突し判読不能になる）。
 save_paper(p19c_paper, "図-4_19c_plant_x_use.png",
            width = 8.2, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.20))
+
+# 【8cm版は省略】用途カテゴリーが17列あり、図-3と同じ理由で8cm幅では
+# 判読不能になる。8.2inを維持する。
 
 # ==============================================================================
 # 図-5 = 17b_reason_by_plant
@@ -311,6 +339,9 @@ p17b_paper <- (p17b_main_paper + p17b_subst_paper +
 save_paper(p17b_paper, "図-5_17b_reason_by_plant.png",
            width = 7.8, height = max(7.0, nrow(taxon_denom) * 0.22 + 0.6))
 
+# 【8cm版は省略】選定理由10列＋右側の代替可能性内訳パネルがあり、
+# 図-3・図-4と同じ理由で8cm幅では判読不能になる。7.8inを維持する。
+
 # ==============================================================================
 # 図-6 = 03b_plant_prevalence_by_pref
 # ==============================================================================
@@ -321,6 +352,17 @@ p03b_paper$layers[[2]]$aes_params$size <- GT_MD
 
 save_paper(p03b_paper, "図-6_03b_plant_prevalence_by_pref.png",
            width = 3.8, height = max(5, nrow(prev_plot) * 0.20))
+
+# ---- 8cm幅版（列は6府県のみなので縮小の余地あり）----
+p03b_s <- p03b_paper +
+  theme(axis.text = element_text(size = 6.2),
+        axis.title = element_text(size = 6.8),
+        legend.text = element_text(size = 6.0),
+        legend.title = element_text(size = 6.4))
+p03b_s$layers[[2]]$aes_params$size <- 2.0   # セル内「n/n_sample」文字
+
+save_paper(p03b_s, "図-6_03b_plant_prevalence_by_pref_8cm.png",
+           width = w8, height = 6.8, dpi = 900)
 
 # ==============================================================================
 # 図-7 = 23c_method_type_by_plant
@@ -336,6 +378,20 @@ p23c_paper <- p23c + noti + pth +
 
 save_paper(p23c_paper, "図-7_23c_method_type_by_plant.png",
            width = 6.2, height = max(6, n_distinct(method_type_long$taxon_label) * 0.17))
+
+# ---- 8cm幅版 ----
+p23c_s <- p23c_paper +
+  theme(axis.text = element_text(size = 4.6),
+        axis.title = element_text(size = 5.0),
+        legend.text = element_text(size = 4.2),
+        legend.title = element_text(size = 4.6),
+        legend.box.spacing = unit(2, "pt"),
+        legend.margin = margin(0, 0, 0, 0),
+        legend.key.size = unit(7, "pt")) +
+  guides(fill = guide_legend(nrow = 2))
+
+save_paper(p23c_s, "図-7_23c_method_type_by_plant_8cm.png",
+           width = w8, height = 3.3, dpi = 900)
 
 # ==============================================================================
 # 図-8 = 28_procurement_change_by_plant
@@ -365,6 +421,19 @@ p28_paper <- ggplot(change_summary_pp, aes(x = taxon_label, y = pct, fill = chan
 save_paper(p28_paper, "図-8_28_procurement_change_by_plant.png",
            width = 4.7, height = max(5, nrow(change_denom) * 0.17))
 
+# ---- 8cm幅版 ----
+p28_s <- p28_paper +
+  theme(axis.text = element_text(size = 4.6),
+        axis.title = element_text(size = 5.0),
+        legend.text = element_text(size = 4.2),
+        legend.title = element_text(size = 4.6),
+        legend.box.spacing = unit(2, "pt"),
+        legend.margin = margin(0, 0, 0, 0),
+        legend.key.size = unit(7, "pt"))
+
+save_paper(p28_s, "図-8_28_procurement_change_by_plant_8cm.png",
+           width = w8, height = 3.4, dpi = 900)
+
 # ==============================================================================
 # 図-9 = 29_plant_x_method_x_change
 # ==============================================================================
@@ -378,6 +447,10 @@ p29_paper$layers[[2]]$aes_params$size <- 2.9
 # 半ページ幅には収まらない。列同士のラベルが衝突しない最低限の幅を確保する。
 save_paper(p29_paper, "図-9_29_plant_x_method_x_change.png",
            width = 9.0, height = max(6, length(taxon_order_29) * 0.19))
+
+# 【8cm版は省略】5つの小図（調達方式）を横に並べるため、8cm幅では
+# 小図1つあたり1.6cm程度しか割り当てられず、各小図内の3列（調達地の
+# 変化）とその軸ラベルが判読不能になる。9.0inを維持する。
 
 # ==============================================================================
 # 図-10 = 24a_plant_x_landscape
@@ -419,6 +492,20 @@ p24a_paper <- ggplot(mat_24a_pp, aes(x = landscape_type, y = resource_taxon, fil
 save_paper(p24a_paper, "図-10_24a_plant_x_landscape.png",
            width = 6.6, height = max(6, n_distinct(mat_24a_pp$resource_taxon) * 0.19))
 
+# ---- 8cm幅版（試作。9列あるため図-3等より厳しいが、列数が少なめなので
+#      試す価値はある）----
+p24a_s <- p24a_paper +
+  theme(axis.text = element_text(size = 4.0),
+        axis.title = element_text(size = 4.4),
+        legend.text = element_text(size = 4.0),
+        legend.title = element_text(size = 4.4, lineheight = 0.9),
+        legend.box.spacing = unit(2, "pt"),
+        legend.margin = margin(0, 0, 0, 0))
+p24a_s$layers[[2]]$aes_params$size <- 1.6   # セル内「n/n_taxon_fest」文字
+
+save_paper(p24a_s, "図-10_24a_plant_x_landscape_8cm.png",
+           width = w8, height = 4.5, dpi = 900)
+
 # ==============================================================================
 # 図-11 = 28b_procurement_change_by_landscape
 # ==============================================================================
@@ -447,6 +534,19 @@ p28b_paper <- ggplot(landscape_change_summary_pp, aes(x = land_label, y = pct, f
 save_paper(p28b_paper, "図-11_28b_procurement_change_by_landscape.png",
            width = 4.7, height = max(4, nrow(landscape_change_denom) * 0.30))
 
+# ---- 8cm幅版（10行のみなので図-8より短く収まる）----
+p28b_s <- p28b_paper +
+  theme(axis.text = element_text(size = 4.6),
+        axis.title = element_text(size = 5.0),
+        legend.text = element_text(size = 4.2),
+        legend.title = element_text(size = 4.6),
+        legend.box.spacing = unit(2, "pt"),
+        legend.margin = margin(0, 0, 0, 0),
+        legend.key.size = unit(7, "pt"))
+
+save_paper(p28b_s, "図-11_28b_procurement_change_by_landscape_8cm.png",
+           width = w8, height = 1.9, dpi = 900)
+
 # ==============================================================================
 # 図-12 = 27a_topic_x_management
 # ==============================================================================
@@ -470,6 +570,18 @@ p27a_paper$layers[[2]]$aes_params$size <- GT_LG
 
 save_paper(p27a_paper, "図-12_27a_topic_x_management.png",
            width = 4.4, height = 4.3)
+
+# ---- 8cm幅版（4行×3列の小さなクロス表なので余裕がある）----
+p27a_s <- p27a_paper +
+  theme(axis.text.x = element_text(size = 5.0, lineheight = 0.9),
+        axis.text.y = element_text(size = 5.0),
+        axis.title = element_text(size = 5.4),
+        legend.text = element_text(size = 4.6),
+        legend.title = element_text(size = 5.0))
+p27a_s$layers[[2]]$aes_params$size <- 2.6
+
+save_paper(p27a_s, "図-12_27a_topic_x_management_8cm.png",
+           width = w8, height = 3.0, dpi = 900)
 
 cat("\n=== 論文用図表", length(list.files(PAPER_DIR, pattern = "\\.png$")), "枚を",
     PAPER_DIR, "に出力 ===\n")
