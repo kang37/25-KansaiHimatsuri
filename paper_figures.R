@@ -95,7 +95,7 @@ p01b_paper <- ggplot(resource_count_df, aes(x = festival)) +
   facet_pref +
   scale_fill_manual(values = BASIS_PAL, name = NULL, breaks = BASIS_LEVELS) +
   scale_y_continuous(limits = c(0, count_max_01 * 1.05), expand = c(0, 0)) +
-  labs(x = NULL, y = "件数（植物口径・資源口径）") +
+  labs(x = NULL, y = "件数") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank(),
         strip.text.y = element_text(size = ST_TEXT, angle = -90),
@@ -758,17 +758,27 @@ F4_AX_TITLE <- F_AX_TITLE * 2
 F4_LG_TEXT  <- F_LG_TEXT * 2
 F4_LG_TITLE <- F_LG_TITLE * 2
 
+# 【2026-09-12改訂】「植物（祭り数）」と「割合（%）」を同じ行に、かつ
+# 前者の右端／後者の左端をタイル部分（パネル）の左境界に揃えるため、
+# plot.title/plot.tagではなくannotate()で直接パネル座標系（x=-Inf）に
+# 描画する（coord_cartesian(clip="off")でパネル外への描画を許可）。
+# セル内の数値は75%超で白文字にする。凡例タイトルは上に配置し、
+# 凡例と図の間隔を詰める。
 p04_final <- ggplot(mat_19c_complete, aes(x = use_cat, y = resource_taxon,
                                            fill = ifelse(pct > 0, pct, NA))) +
   geom_tile(color = "black", linewidth = 0.15) +
   geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1, suffix = ""), "")),
-            size = 3.0, family = "HiraginoSans-W3", color = "gray15") +
+            size = 3.0, family = "HiraginoSans-W3",
+            color = ifelse(mat_19c_complete$pct > 0.75, "white", "gray15")) +
+  annotate("text", x = -Inf, y = Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
+           size = F4_AX_TEXT / 2.845, family = "HiraginoSans-W3") +
+  annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
+           size = F4_AX_TEXT / 2.845, family = "HiraginoSans-W3") +
+  coord_cartesian(clip = "off") +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
                       labels = scales::percent, name = "割合",
-                      guide = guide_colorbar(title.position = "left")) +
-  # 「植物（祭り数）」はplot.tag（plot全体基準）、「割合（%）」はplot.title
-  # （panel基準）に分け、後者をタイル部分の左端と揃える。
-  labs(x = NULL, y = NULL, title = "割合（%）", tag = "植物（祭り数）") +
+                      guide = guide_colorbar(title.position = "top")) +
+  labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 30, hjust = 1)) +
   heat_frame_theme +
@@ -776,12 +786,8 @@ p04_final <- ggplot(mat_19c_complete, aes(x = use_cat, y = resource_taxon,
         axis.title = element_text(size = F4_AX_TITLE),
         legend.text = element_text(size = F4_LG_TEXT),
         legend.title = element_text(size = F4_LG_TITLE),
-        plot.title = element_text(size = F4_AX_TEXT, face = "plain", hjust = 0),
-        plot.title.position = "panel",
-        plot.tag = element_text(size = F4_AX_TEXT, face = "plain", hjust = 0),
-        plot.tag.position = c(0, 1),
-        plot.tag.location = "plot",
-        plot.margin = margin(14, 5.5, 5.5, 5.5))
+        legend.box.spacing = unit(4, "pt"),
+        plot.margin = margin(18, 5.5, 5.5, 5.5))
 save_final(p04_final, "図-4_19c_plant_x_use.png",
            width = 8.2, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.20))
 
