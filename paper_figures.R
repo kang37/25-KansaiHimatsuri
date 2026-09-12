@@ -900,7 +900,7 @@ mat_24a_complete <- landscape_records %>%
 p10_final <- ggplot(mat_24a_complete, aes(x = landscape_type, y = resource_taxon, fill = pct)) +
   geom_tile(color = "black", linewidth = 0.15) +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
-                      labels = scales::percent, name = "土地利用の割合",
+                      labels = scales::percent, name = "割合",
                       guide = guide_colorbar(barwidth = unit(28, "pt"),
                                              barheight = unit(45, "pt"))) +
   labs(x = NULL, y = NULL) +
@@ -909,8 +909,8 @@ p10_final <- ggplot(mat_24a_complete, aes(x = landscape_type, y = resource_taxon
   heat_frame_theme +
   theme(axis.text = element_text(size = 7.0),
         axis.title = element_text(size = 7.5),
-        legend.text = element_text(size = 4.2),
-        legend.title = element_text(size = 4.6, lineheight = 0.9))
+        legend.text = element_text(size = 6.0),
+        legend.title = element_text(size = 6.5, lineheight = 0.9))
 # 【注】文字拡大により軸ラベルが幅を取るため、9列のタイル部分を確保する
 # には8cm(w8)では足りない。字が重ならない最低限としてやや幅を広げる。
 save_final(p10_final, "図-10_24a_plant_x_landscape.png",
@@ -936,9 +936,9 @@ p27a_final_base <- p27a_paper +
 p27a_final_base$layers[[2]]$aes_params$size <- 2.6
 
 p12_final <- recolor_tiles(p27a_final_base) + heat_frame_theme +
-  theme(legend.text = element_text(size = 3.2),
-        legend.title = element_text(size = 3.6),
-        legend.key.size = unit(6, "pt"))
+  guides(fill = guide_colorbar(barwidth = unit(10, "pt"), barheight = unit(75, "pt"))) +
+  theme(legend.text = element_text(size = F_AX_TEXT * 2),
+        legend.title = element_text(size = F_AX_TITLE * 2))
 save_final(p12_final, "図-12_27a_topic_x_management.png",
            width = w8, height = 2.8)
 
