@@ -901,7 +901,7 @@ p10_final <- ggplot(mat_24a_complete, aes(x = landscape_type, y = resource_taxon
   geom_tile(color = "black", linewidth = 0.15) +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
                       labels = scales::percent, name = "割合",
-                      guide = guide_colorbar(barwidth = unit(28, "pt"),
+                      guide = guide_colorbar(barwidth = unit(14, "pt"),
                                              barheight = unit(45, "pt"))) +
   labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
@@ -940,7 +940,7 @@ p12_final <- recolor_tiles(p27a_final_base) + heat_frame_theme +
   theme(legend.text = element_text(size = F_AX_TEXT * 2),
         legend.title = element_text(size = F_AX_TITLE * 2))
 save_final(p12_final, "図-12_27a_topic_x_management.png",
-           width = w8, height = 2.8)
+           width = w8, height = 2.5)
 
 cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$")), "枚を",
     FINAL_DIR, "に出力 ===\n")
