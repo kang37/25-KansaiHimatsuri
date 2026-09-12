@@ -71,7 +71,7 @@ save_paper <- function(p, name, width, height, dpi = 600) {
 resource_count_records <- resource_df %>%
   count(festival, name = "n_records")
 
-BASIS_LEVELS <- c("植物口径（種類数）", "資源口径（レコード数）")
+BASIS_LEVELS <- c("植物種類数", "資源種類数")
 BASIS_PAL <- setNames(c("gray35", "gray75"), BASIS_LEVELS)
 
 # 【デザイン方針】資源口径（n_records）は植物口径（n_resources）以上に
@@ -85,17 +85,17 @@ resource_count_df <- festival_profile %>%
 
 count_max_01 <- max(resource_count_df$n_records, resource_count_df$n_resources, na.rm = TRUE)
 
+# 【2026-09-12改訂】バー上のn/n数値ラベルを削除（データはバーの長さと
+# 凡例の色だけで示す）。ラベル分の余白が不要になったのでx軸の拡大率を
+# 縮小し、その分だけ全体の高さを拡大する。
 p01b_paper <- ggplot(resource_count_df, aes(x = festival)) +
   geom_col(aes(y = n_records, fill = BASIS_LEVELS[2]), width = 0.68, na.rm = TRUE) +
   geom_col(aes(y = n_resources, fill = BASIS_LEVELS[1]), width = 0.32, na.rm = TRUE) +
-  geom_text(aes(y = pmax(n_records, n_resources, na.rm = TRUE),
-                label = paste0(n_resources, "/", n_records)),
-            hjust = -0.15, size = GT_MD, color = "gray20") +
   coord_flip() +
   facet_pref +
   scale_fill_manual(values = BASIS_PAL, name = NULL, breaks = BASIS_LEVELS) +
-  scale_y_continuous(limits = c(0, count_max_01 * 1.22), expand = c(0, 0)) +
-  labs(x = NULL, y = "件数（植物口径／資源口径）") +
+  scale_y_continuous(limits = c(0, count_max_01 * 1.05), expand = c(0, 0)) +
+  labs(x = NULL, y = "件数（植物口径・資源口径）") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank(),
         strip.text.y = element_text(size = ST_TEXT, angle = -90),
@@ -103,7 +103,7 @@ p01b_paper <- ggplot(resource_count_df, aes(x = festival)) +
   pth
 
 save_paper(p01b_paper, "図-1_01_profile_age_and_resources.png",
-           width = 4.4, height = max(4, length(festival_order) * 0.15))
+           width = 4.4, height = max(5.5, length(festival_order) * 0.22))
 
 # ---- 8cm幅版 ----
 w8 <- 8 / 2.54
@@ -114,10 +114,9 @@ p01b_s <- p01b_paper +
         axis.title = element_text(size = AX_TEXT_S1 + 0.4),
         strip.text.y = element_text(size = AX_TEXT_S1, angle = -90),
         legend.text = element_text(size = AX_TEXT_S1 - 0.4))
-p01b_s$layers[[3]]$aes_params$size <- 2.2   # geom_text（n/n形式ラベル）
 
 save_paper(p01b_s, "図-1_01_profile_age_and_resources_8cm.png",
-           width = w8, height = max(3.2, length(festival_order) * 0.13), dpi = 900)
+           width = w8, height = max(4.5, length(festival_order) * 0.19), dpi = 900)
 
 # ==============================================================================
 # 図-2 = 03a_plant_prevalence_weighted
@@ -157,7 +156,7 @@ p03a_daily_paper <- ggplot(daily_share_03_pp, aes(x = pct, y = resource_taxon, f
   scale_fill_manual(values = daily_colors_nonum, name = "日常利用", drop = FALSE) +
   scale_x_continuous(labels = scales::percent,
                       expand = expansion(mult = c(0, 0.06))) +
-  labs(x = NULL, y = NULL) +
+  labs(x = "日常利用の割合", y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
         panel.grid.major.y = element_blank(),
@@ -225,9 +224,9 @@ save_paper(p03a_paper_s, "図-2_03a_plant_prevalence_weighted_8cm_smallfont.png"
 # 【2026-09-12改訂】軸・凡例の文字を、他図のセル内数値と同程度の大きさ
 # まで拡大し、軸文字と凡例文字を揃える。凡例タイトルは「資源の割合」に
 # 変更し、キー（丸）の下に配置する。
-AX_TEXT_3  <- 9.0
-LG_TEXT_3  <- 9.0
-LG_TITLE_3 <- 9.5
+AX_TEXT_3  <- 13.5
+LG_TEXT_3  <- 13.5
+LG_TITLE_3 <- 14.25
 
 p19d_paper <- p19d + noti + pth +
   theme(axis.text.x = element_text(size = AX_TEXT_3, angle = 35, hjust = 1),
@@ -235,7 +234,7 @@ p19d_paper <- p19d + noti + pth +
         legend.text = element_text(size = LG_TEXT_3),
         legend.title = element_text(size = LG_TITLE_3),
         legend.position = "bottom") +
-  guides(size = guide_legend(nrow = 1, title.position = "bottom")) +
+  guides(size = guide_legend(nrow = 1, title.position = "left")) +
   scale_size_area(max_size = 6, labels = scales::percent,
                    name = "資源の割合") +
   scale_y_discrete(drop = FALSE, expand = expansion(add = c(0.6, 1.0)))
@@ -247,8 +246,10 @@ p19d_paper$layers[[1]]$aes_params$fill   <- "gray65"
 p19d_paper$layers[[1]]$aes_params$alpha  <- NULL
 p19d_paper$layers[[1]]$aes_params$stroke <- 0.7
 
+# 【2026-09-12改訂】軸文字を1.5倍に拡大した分、列同士のラベルが重ならない
+# よう幅も同程度拡大する（6.2in→9.3in）。
 save_paper(p19d_paper, "図-3_19d_plant_x_part.png",
-           width = 6.2, height = max(6, length(part_taxon_order) * 0.34))
+           width = 9.3, height = max(6, length(part_taxon_order) * 0.34))
 
 # 【8cm版は省略】x軸の「部位」カテゴリーが21列あり、8cm幅では列ごとに
 # 1.5mm程度しか割り当てられず、文字サイズを極限まで縮めても軸ラベルが
@@ -331,16 +332,24 @@ p17b_main_paper <- ggplot(reason_grid_res, aes(x = rlabel, y = taxon_label)) +
             color = ifelse(reason_grid_res$share > 0.5, "white", "gray20")) +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
                       limits = c(0, 1), breaks = c(0, 0.5, 1),
-                      labels = scales::percent, name = "各理由の割合",
-                      guide = guide_colorbar(title.position = "top",
+                      labels = scales::percent, name = "各理由の割合　",
+                      guide = guide_colorbar(title.position = "left",
                                              barwidth = unit(70, "pt"),
                                              barheight = unit(6, "pt"))) +
-  labs(x = NULL, y = NULL, title = "植物（祭り数）　割合（%）") +
+  # 【2026-09-12改訂】「植物（祭り数）」はplot.tag（plot全体基準＝軸ラベルを
+  # 含めた左端に配置）、「割合（%）」はplot.title（デフォルトのpanel基準＝
+  # タイル部分の左端に配置）に分けることで、前者は軸ラベルの上、後者は
+  # パネルの左端の上にそれぞれ揃う。
+  labs(x = NULL, y = NULL, title = "割合（%）", tag = "植物（祭り数）") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid = element_blank(),
         axis.text.x = element_text(angle = 30, hjust = 1),
-        plot.title = element_text(size = AX_TEXT, face = "plain", hjust = 0)) +
-  pth + theme(plot.margin = margin(3, 10, 3, 3))
+        plot.title = element_text(size = AX_TEXT, face = "plain", hjust = 0),
+        plot.title.position = "panel",
+        plot.tag = element_text(size = AX_TEXT, face = "plain", hjust = 0),
+        plot.tag.position = c(0, 1),
+        plot.tag.location = "plot") +
+  pth + theme(plot.margin = margin(14, 10, 3, 3))
 
 # --- 代替可能性の内訳（右パネル）---
 # 【2026-09-11改訂】代替可能性が空値（NA）の資源は、元々「代替不可」等の
@@ -377,7 +386,7 @@ subst_share_17b_pp <- resource_df %>%
 p17b_subst_paper <- ggplot(subst_share_17b_pp, aes(x = pct, y = taxon_label, fill = subst_label)) +
   geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
   scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE,
-                     guide = guide_legend(nrow = 1, title.position = "top")) +
+                     guide = guide_legend(nrow = 1, title.position = "left")) +
   scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
   labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
@@ -391,9 +400,12 @@ p17b_subst_paper <- ggplot(subst_share_17b_pp, aes(x = pct, y = taxon_label, fil
 p17b_legend_theme <- theme(
   legend.box = "horizontal",
   legend.direction = "horizontal",
-  legend.spacing.x = unit(14, "pt"),
+  legend.spacing.x = unit(26, "pt"),
   legend.key.spacing.x = unit(0, "pt"),
   legend.text = element_text(margin = margin(l = 0)),
+  # title.position="left"では凡例タイトルとキー（バー/スウォッチ）の間隔が
+  # デフォルトでほぼ0になるため、タイトル右側に余白を追加する。
+  legend.title = element_text(margin = margin(r = 6)),
   legend.margin = margin(0, 2, 0, 2)
 )
 
@@ -713,20 +725,19 @@ p01_final <- p01b_s +
         axis.title = element_text(size = 6.8),
         strip.text = element_text(size = 6.2),
         legend.text = element_text(size = 6.0))
-p01_final$layers[[3]]$aes_params$size <- 2.6   # geom_text（n/n形式ラベル）
 save_final(p01_final, "図-1_01_profile_age_and_resources.png",
-           width = w8, height = max(3.4, length(festival_order) * 0.135))
+           width = w8, height = max(4.8, length(festival_order) * 0.20))
 
 # ---- 図-2（8cm版、非ヒートマップ）----
 p02_final <- p03a_paper_s + final_text_theme
 save_final(p02_final, "図-2_03a_plant_prevalence_weighted.png",
            width = w8, height = 3.4)
 
-# ---- 図-3（8cm不可、元の幅のまま。非ヒートマップ＝散布バブル図）----
+# ---- 図-3（8cm不可、幅を拡大。非ヒートマップ＝散布バブル図）----
 # p19d_paper側で既に軸・凡例文字を拡大済み（AX_TEXT_3等）なのでそのまま使う。
 p03_final <- p19d_paper
 save_final(p03_final, "図-3_19d_plant_x_part.png",
-           width = 6.2, height = max(6, length(part_taxon_order) * 0.34))
+           width = 9.3, height = max(6, length(part_taxon_order) * 0.34))
 
 # ---- 図-4（8cm不可、元の幅のまま。ヒートマップ）----
 # 値がないセルにも罫線を表示するため、行×列の全組み合わせに展開してから描画
@@ -738,17 +749,39 @@ mat_19c_complete <- use_long %>%
          resource_taxon = factor(resource_taxon, levels = rev(taxon_order_19c)),
          use_cat = factor(use_cat, levels = use_order_19c))
 
+# 【2026-09-12改訂】final_text_theme（8cm幅図用の縮小サイズ）ではなく、
+# 図-4自身の幅（8.2in）に見合う大きさを別途定義する（現状比2倍）。
+# 図左上に分母の注記を追加し、plot.title.position="plot"でy軸ラベルの
+# 左端とおおよそ揃える。
+F4_AX_TEXT  <- F_AX_TEXT * 2
+F4_AX_TITLE <- F_AX_TITLE * 2
+F4_LG_TEXT  <- F_LG_TEXT * 2
+F4_LG_TITLE <- F_LG_TITLE * 2
+
 p04_final <- ggplot(mat_19c_complete, aes(x = use_cat, y = resource_taxon,
                                            fill = ifelse(pct > 0, pct, NA))) +
   geom_tile(color = "black", linewidth = 0.15) +
-  geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1), "")),
-            size = 2.2, family = "HiraginoSans-W3", color = "gray15") +
+  geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1, suffix = ""), "")),
+            size = 3.0, family = "HiraginoSans-W3", color = "gray15") +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
-                      labels = scales::percent, name = "その植物の資源レコードに\n占める割合") +
-  labs(x = NULL, y = NULL) +
+                      labels = scales::percent, name = "割合",
+                      guide = guide_colorbar(title.position = "left")) +
+  # 「植物（祭り数）」はplot.tag（plot全体基準）、「割合（%）」はplot.title
+  # （panel基準）に分け、後者をタイル部分の左端と揃える。
+  labs(x = NULL, y = NULL, title = "割合（%）", tag = "植物（祭り数）") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 30, hjust = 1)) +
-  heat_frame_theme + final_text_theme
+  heat_frame_theme +
+  theme(axis.text = element_text(size = F4_AX_TEXT),
+        axis.title = element_text(size = F4_AX_TITLE),
+        legend.text = element_text(size = F4_LG_TEXT),
+        legend.title = element_text(size = F4_LG_TITLE),
+        plot.title = element_text(size = F4_AX_TEXT, face = "plain", hjust = 0),
+        plot.title.position = "panel",
+        plot.tag = element_text(size = F4_AX_TEXT, face = "plain", hjust = 0),
+        plot.tag.position = c(0, 1),
+        plot.tag.location = "plot",
+        plot.margin = margin(14, 5.5, 5.5, 5.5))
 save_final(p04_final, "図-4_19c_plant_x_use.png",
            width = 8.2, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.20))
 
@@ -763,10 +796,14 @@ p17b_main_final <- recolor_tiles(p17b_main_paper) + heat_frame_theme +
         axis.title = element_text(size = F5_TITLE),
         legend.text = element_text(size = F5_TEXT),
         legend.title = element_text(size = F5_TITLE),
-        plot.title = element_text(size = F5_TEXT, face = "plain", hjust = 0))
+        plot.title = element_text(size = F5_TEXT, face = "plain", hjust = 0),
+        plot.title.position = "panel",
+        plot.tag = element_text(size = F5_TEXT, face = "plain", hjust = 0),
+        plot.tag.position = c(0, 1),
+        plot.tag.location = "plot")
 p17b_subst_final <- p17b_subst_paper +
   scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE, breaks = SUBST4,
-                     guide = guide_legend(nrow = 1, title.position = "top")) +
+                     guide = guide_legend(nrow = 1, title.position = "left")) +
   theme(axis.text = element_text(size = F5_TEXT),
         axis.title = element_text(size = F5_TITLE),
         legend.text = element_text(size = F5_TEXT),
