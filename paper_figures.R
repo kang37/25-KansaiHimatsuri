@@ -744,11 +744,13 @@ save_final <- function(p, name, width, height, dpi = 900) {
 #      なったため高さを大幅に縮小する ----
 # 【2026-09-13改訂】横版のため8cm幅の制約から外れ、他の横幅図（図-3・
 # 図-4等）と同様に必要な幅を確保する。文字サイズも少し拡大する。
+# 【2026-09-13改訂】文字サイズをすべてx軸ラベルの2倍（7.0pt→14.0pt）に統一。
 p01_final <- p01b_paper +
-  theme(axis.text = element_text(size = 7.0),
-        axis.title = element_text(size = 7.5),
-        strip.text = element_text(size = 7.0),
-        legend.text = element_text(size = 6.5))
+  theme(axis.text = element_text(size = 14.0),
+        axis.title = element_text(size = 14.0),
+        strip.text = element_text(size = 14.0),
+        legend.text = element_text(size = 14.0),
+        legend.title = element_text(size = 14.0))
 save_final(p01_final, "図-1_01_profile_age_and_resources.png",
            width = max(11, length(festival_order) * 0.36), height = 4.2)
 
