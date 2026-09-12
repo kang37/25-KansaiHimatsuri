@@ -50,6 +50,15 @@ MATOME_PATH <- "data_raw/分析内容まとめ.xlsx"
 OUTPUT_DIR  <- "data_proc/20260902"
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
+# 2026-09-12 追加：結果1・結果2・結果4・結果5（資源レコード層）を1シートに
+# 統合・更新した raw_data_agg.xlsx。呼び出し元スクリプトが実行前に
+# USE_RAW_DATA_AGG <- TRUE を設定すると、資源レコードをこちらから読む
+# （受访者年齢=mt0・府県対応=mt3・話題/管理活動=mt6 は従来通り
+# 分析内容まとめ.xlsx を使う。両ファイルとも祭り名30件が完全一致することを
+# 確認済み）。未設定時（デフォルト）は既存の挙動を一切変えない。
+if (!exists("USE_RAW_DATA_AGG")) USE_RAW_DATA_AGG <- FALSE
+RAW_AGG_PATH <- "data_raw/raw_data_agg.xlsx"
+
 # ------------------------------------------------------------------------------
 # 祭り所在府県（図の並び順のグループ化に使用）
 # ------------------------------------------------------------------------------
@@ -217,7 +226,18 @@ MT_SHEET <- c(informant = 1, daily = 2, use = 3, pref = 4,
              method = 5, landscape = 6, engagement = 7)
 
 # 非植物資材（結果1の植物の種類・材質に人手で記録されている）
-NONPLANT_TAXA <- c("アルミ・灯油", "ワタ（綿）", "布類（材質不明）")
+NONPLANT_TAXA <- c("アルミ・灯油", "ワタ（綿）", "タオル（綿）", "布類（材質不明）")
+
+# raw_data_agg.xlsx側の表記ゆれをTAXON_ORDERの既存カテゴリーに揃える
+# （同じ分類群の言い換えと判断したもののみ。新規に追加された分類群は
+# そのままTAXON_ORDER外の"extra"として末尾に表示される）
+TAXON_RENAME_AGG <- c(
+  "稲（うるち米）"     = "稲",
+  "ササ類"             = "ササ",
+  "スダジイ"           = "シイノキ",
+  "ツバキ類"           = "ツバキ",
+  "その他の広葉樹類"   = "他の広葉樹類"
+)
 
 matome_clean <- function(x) str_squish(str_replace_all(as.character(x), "[\r\n]+", " "))
 
@@ -654,29 +674,66 @@ cat("未分類 話題:", sum(is.na(festival_engagement$topic_score)),
 # なく、キー結合では同一(祭り,taxon_kind)内に複数部位がある場合に多重一致
 # してしまうため、位置対応が正しい。結果2のみ行順が異なる（資源名でソート
 # されている）ため、(祭り,taxon_kind,part) のキー結合を使う。
-stopifnot(nrow(mt1) == nrow(mt4), all(matome_clean(mt1$festival) == mt4$festival))
+if (USE_RAW_DATA_AGG) {
 
-resource_raw <- bind_cols(
-  mt4 %>% select(festival, taxon_kind, part, join_part, method_class, method_note, timing_raw),
-  mt1 %>% select(resource_orig = resource_raw, daily_class, daily_note, current_use)
-) %>%
-  left_join(mt2 %>% select(festival, taxon_kind, join_part, use_class, use_note,
-                           reason_raw, subst_class, subst_note),
-            by = c("festival", "taxon_kind", "join_part")) %>%
-  left_join(mt5 %>% select(festival, taxon_kind, part, change_class, change_note, landscape_raw),
-            by = c("festival", "taxon_kind", "part")) %>%
-  left_join(taxon_matome_map %>% rename(resource_orig = res_list),
-            by = c("festival", "resource_orig")) %>%
-  select(-join_part)
+  # --- raw_data_agg.xlsx（結果1・2・4・5を統合済みの資源レコード表）---
+  agg_raw <- suppressMessages(read_excel(RAW_AGG_PATH, sheet = 1, col_names = TRUE))
+  stopifnot(ncol(agg_raw) == 19)
+  names(agg_raw) <- c(
+    "festival", "taxon_kind", "part", "daily_class", "daily_note",
+    "current_use", "in_scope", "use_class", "use_note", "reason_raw",
+    "subst_class", "subst_note", "method_class", "method_note", "timing_raw",
+    "change_class", "change_note", "landscape_raw", "landscape_note"
+  )
+
+  resource_raw <- agg_raw %>%
+    mutate(across(c(festival, taxon_kind, part, daily_class, use_class, reason_raw,
+                    subst_class, method_class, change_class, landscape_raw),
+                  matome_clean),
+           taxon_kind    = ifelse(taxon_kind %in% names(TAXON_RENAME_AGG),
+                                  unname(TAXON_RENAME_AGG[taxon_kind]), taxon_kind),
+           resource_orig = part,
+           current_use   = suppressWarnings(as.integer(current_use)),
+           in_scope      = suppressWarnings(as.integer(in_scope)),
+           taxon_matome  = NA_character_) %>%
+    filter(in_scope == 1) %>%
+    select(festival, taxon_kind, part, method_class, method_note, timing_raw,
+           resource_orig, daily_class, daily_note, current_use,
+           use_class, use_note, reason_raw, subst_class, subst_note,
+           change_class, change_note, landscape_raw, taxon_matome)
+
+  cat("\n=== raw_data_agg.xlsxから資源レコードを読み込み ===\n")
+  cat("除外（集計対象外 in_scope=0）:", sum(agg_raw$in_scope == 0, na.rm = TRUE), "件\n")
+
+} else {
+
+  stopifnot(nrow(mt1) == nrow(mt4), all(matome_clean(mt1$festival) == mt4$festival))
+
+  resource_raw <- bind_cols(
+    mt4 %>% select(festival, taxon_kind, part, join_part, method_class, method_note, timing_raw),
+    mt1 %>% select(resource_orig = resource_raw, daily_class, daily_note, current_use)
+  ) %>%
+    left_join(mt2 %>% select(festival, taxon_kind, join_part, use_class, use_note,
+                             reason_raw, subst_class, subst_note),
+              by = c("festival", "taxon_kind", "join_part")) %>%
+    left_join(mt5 %>% select(festival, taxon_kind, part, change_class, change_note, landscape_raw),
+              by = c("festival", "taxon_kind", "part")) %>%
+    left_join(taxon_matome_map %>% rename(resource_orig = res_list),
+              by = c("festival", "resource_orig")) %>%
+    select(-join_part)
+
+}
 
 .unmapped_use <- resource_raw %>% filter(is.na(use_class))
 cat("結果2（利用方法等）に対応しない記録:", nrow(.unmapped_use), "件",
     if (nrow(.unmapped_use) > 0) paste0("（", paste(unique(.unmapped_use$taxon_kind), collapse = "、"), "）") else "", "\n")
 
-.unmapped_taxon <- resource_raw %>% filter(is.na(taxon_matome), !(taxon_kind %in% NONPLANT_TAXA))
-if (nrow(.unmapped_taxon) > 0) {
-  cat("結果3の資源グループに対応しない記録:", nrow(.unmapped_taxon), "件\n")
-  print(as.data.frame(.unmapped_taxon %>% select(festival, taxon_kind, resource_orig)))
+if (!USE_RAW_DATA_AGG) {
+  .unmapped_taxon <- resource_raw %>% filter(is.na(taxon_matome), !(taxon_kind %in% NONPLANT_TAXA))
+  if (nrow(.unmapped_taxon) > 0) {
+    cat("結果3の資源グループに対応しない記録:", nrow(.unmapped_taxon), "件\n")
+    print(as.data.frame(.unmapped_taxon %>% select(festival, taxon_kind, resource_orig)))
+  }
 }
 
 cat("資源レコード:", nrow(resource_raw), "件 /",
