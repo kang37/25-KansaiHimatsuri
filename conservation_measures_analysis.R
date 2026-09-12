@@ -145,12 +145,27 @@ code_landscape <- function(x) {
   }, character(1), USE.NAMES = FALSE)
 }
 
-habitat_diversity <- read_mt("landscape") %>%
-  rename(festival = 1, taxon_kind = 2, part = 3, change_class = 4,
-         change_note = 5, landscape_raw = 6) %>%
+# 【2026-09-13 追記】data_raw/分析内容まとめ.xlsx が本スクリプト作成後に
+# 結果6（景観）シートを7列構成に再編されていた（従来の6列から「調達地の
+# 景観補足」列が独立）。列数不一致で落ちるとデバッグしづらいため列数を
+# 検査してから列名を当てる。
+landscape_sheet <- read_mt("landscape")
+stopifnot("結果6（景観）シートの列数が想定と異なる。列構成を確認してください" =
+            ncol(landscape_sheet) %in% c(6, 7))
+if (ncol(landscape_sheet) == 7) {
+  names(landscape_sheet) <- c("festival", "taxon_kind", "part", "change_class",
+                              "change_note", "landscape_raw", "landscape_note")
+} else {
+  names(landscape_sheet) <- c("festival", "taxon_kind", "part", "change_class",
+                              "change_note", "landscape_raw")
+}
+
+landscape_long <- landscape_sheet %>%
   mutate(festival = clean(festival), landscape_all = code_landscape(clean(landscape_raw))) %>%
   filter(!is.na(landscape_all)) %>%
-  separate_rows(landscape_all, sep = "\\|") %>%
+  separate_rows(landscape_all, sep = "\\|")
+
+habitat_diversity <- landscape_long %>%
   group_by(festival) %>%
   summarise(n_habitats = n_distinct(landscape_all),
             habitats = paste(sort(unique(landscape_all)), collapse = "・"),
@@ -312,3 +327,97 @@ cat("\n完了。出力先:", OUTPUT_DIR, "\n")
 cat("  conservation_tier_by_festival.csv      祭り別の分類結果・根拠・景観多様性・嵌入度\n")
 cat("  conservation_tier_x_habitat_x_embed.png 散布図\n")
 cat("  conservation_tier_boxplots.png          段階別の箱ひげ図\n")
+
+# ==============================================================================
+# 7. 河川・湖沼との関わりが強い祭りほど保全措置が多いか
+# ------------------------------------------------------------------------------
+# 「河川・湖沼との関わり」を2つの独立した根拠で判定し、どちらか一方でも
+# 該当すれば river_lake = TRUE とする：
+#   (a) 構造化データ：結果5「調達地の景観」に「湿地」が含まれる
+#       （本データでの「湿地」は聞き取り上、琵琶湖岸・宇治川のヨシ原など
+#       河川・湖沼沿いの湿生植生を指しており、内陸の沼沢とは記述上区別
+#       されていない点に注意。目視確認済み：該当祭りの景観補足はいずれも
+#       琵琶湖または宇治川に言及している）。
+#   (b) 自由記述：結果6のtopic_note/mgmt_noteに「琵琶湖|宇治川|河川|湖岸|
+#       川|湖|水質」のいずれかが直接登場する
+#       （まんどろ火祭りの河川敷アドプト活動のように、資源の調達地としてで
+#       はなく組織の活動として川と関わる祭りを拾うため、(a)とは別に必要）。
+# n=30と小さいため統計検定はFisherの正確確率検定を用いる。
+# ------------------------------------------------------------------------------
+
+river_lake_landscape <- landscape_long %>%
+  filter(landscape_all == "湿地") %>%
+  distinct(festival) %>%
+  pull(festival)
+
+RIVER_LAKE_PAT <- "琵琶湖|宇治川|河川|湖岸|川|湖|水質"
+river_lake_text <- engagement %>%
+  filter(str_detect(paste(topic_note, mgmt_note), RIVER_LAKE_PAT)) %>%
+  pull(festival)
+
+river_lake_festivals <- union(river_lake_landscape, river_lake_text)
+
+joined <- joined %>%
+  mutate(
+    river_lake = festival %in% river_lake_festivals,
+    river_lake_evidence = case_when(
+      festival %in% river_lake_landscape & festival %in% river_lake_text ~ "景観(湿地)+本文言及",
+      festival %in% river_lake_landscape                                  ~ "景観(湿地)のみ",
+      festival %in% river_lake_text                                       ~ "本文言及のみ",
+      TRUE                                                                 ~ ""
+    )
+  )
+
+cat("\n=== 河川・湖沼との関わりが認められる祭り", length(river_lake_festivals), "件 ===\n")
+print(as.data.frame(joined %>% filter(river_lake) %>%
+  select(festival, pref, conservation_tier, river_lake_evidence)))
+
+cross_river <- table(
+  river_lake = joined$river_lake,
+  is_tier_A  = joined$conservation_tier == "A"
+)
+cat("\n=== クロス表：河川湖沼との関わり × 保全段階A該当 ===\n")
+print(cross_river)
+
+ft <- fisher.test(cross_river)
+cat("\nFisherの正確確率検定: p =", round(ft$p.value, 4),
+    " オッズ比 =", round(unname(ft$estimate), 2), "\n")
+
+cat("\n=== 参考：river_lake別の段階構成 ===\n")
+print(as.data.frame(joined %>% count(river_lake, tier_label) %>%
+  group_by(river_lake) %>% mutate(pct = round(n / sum(n), 2)) %>% ungroup()))
+
+p3 <- joined %>%
+  mutate(river_lake_label = ifelse(river_lake, "河川・湖沼と関わりあり", "関わりなし")) %>%
+  count(river_lake_label, tier_label) %>%
+  group_by(river_lake_label) %>%
+  mutate(pct = n / sum(n), n_group = sum(n)) %>%
+  ungroup() %>%
+  mutate(river_lake_label = paste0(river_lake_label, "\n(n=", n_group, ")")) %>%
+  ggplot(aes(x = river_lake_label, y = pct, fill = tier_label)) +
+  geom_col(width = 0.55) +
+  geom_text(aes(label = n), position = position_stack(vjust = 0.5), size = 3.2,
+            color = "white", family = "HiraginoSans-W3") +
+  scale_fill_manual(values = TIER_COLORS, name = "保全措置の段階") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "河川・湖沼との関わりが強い祭りほど保全措置(段階A)が多いか",
+    subtitle = paste0("Fisher正確確率検定 p = ", round(ft$p.value, 4),
+                      "（河川・湖沼との関わり = 調達景観に「湿地」を含む、",
+                      "または本文に琵琶湖・宇治川等への言及がある）"),
+    x = NULL, y = "祭りの割合"
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"), legend.position = "right")
+
+ggsave(file.path(OUTPUT_DIR, "river_lake_x_conservation_tier.png"), p3,
+       width = 8.5, height = 6, dpi = 150)
+
+write.csv(
+  joined %>% select(festival, pref, river_lake, river_lake_evidence,
+                    conservation_tier, tier_evidence, n_habitats, mean_embed),
+  file.path(OUTPUT_DIR, "river_lake_x_conservation_tier.csv"),
+  row.names = FALSE, fileEncoding = "UTF-8"
+)
+
+cat("\n  river_lake_x_conservation_tier.png/csv  河川湖沼との関わり×保全段階\n")
