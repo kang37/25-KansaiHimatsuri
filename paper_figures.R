@@ -60,64 +60,64 @@ save_paper <- function(p, name, width, height, dpi = 600) {
 
 # ==============================================================================
 # 図-1 = 01_profile_age_and_resources
+# ------------------------------------------------------------------------------
+# 【2026-09-12改訂】左パネル（協力者年齢）を削除し、右パネル（資源数）のみ
+# を残す。祭り名を表示し、文字を拡大、全体の高さを縮小する。カウント基準を
+# 2種類併記する：
+#   ・植物口径＝祭り×植物分類群のユニーク数（従来のn_resources、濃灰）
+#   ・資源口径＝祭り×植物×使用部位のレコード数（resource_dfの行数、灰）
 # ==============================================================================
 
-p01a_paper <- p01a_age + noti +
-  theme(axis.text.x = element_text(size = AX_TEXT),
-        axis.text.y = element_text(size = AX_TEXT))
-# 【バグ修正】元のscale_y_continuous(limits=c(25,100))は最年少22歳（雲ケ畑
-# 松上げの協力者2名）を範囲外として無言で除外していた（geom_point/geom_line
-# 両方で"Removed 2 rows"警告が出ていた）。下限を20に広げてデータを保持する。
-p01a_paper <- p01a_paper +
-  scale_y_continuous(limits = c(20, 100), breaks = seq(30, 90, 20))
-# 年齢数値ラベル（layers[[5]]）を削除。中央（左パネル）の府県名は
-# strip.text.y=element_blank()（p01a_age自身の設定を継承）のまま維持。
-p01a_paper$layers[[5]] <- NULL
-# 協力者が1名のみの祭りは「平均」に意味がないため、平均の縦線
-# （geom_errorbar、layers[[3]]）を2名以上の祭りに限定する。
-p01a_paper$layers[[3]]$data <- age_summary_f %>% filter(n_inf > 1)
-# 点を「黒縁・内部半透明」に変更（shape=21で塗りと縁を分離）
-p01a_paper$layers[[4]]$aes_params$shape  <- 21
-p01a_paper$layers[[4]]$aes_params$colour <- "black"
-p01a_paper$layers[[4]]$aes_params$fill   <- scales::alpha("black", 0.35)
-p01a_paper$layers[[4]]$aes_params$alpha  <- NULL
-p01a_paper$layers[[4]]$aes_params$stroke <- 0.9
+resource_count_records <- resource_df %>%
+  count(festival, name = "n_records")
 
-p01b_paper <- p01b_div + noti +
-  theme(axis.text.x = element_text(size = AX_TEXT),
-        # 右パネルにのみ府県名を残し、時計回りに90度回転して省スペース化
-        strip.text.y = element_text(size = ST_TEXT, angle = -90)) +
-  labs(x = NULL, y = "植物種類")
-p01b_paper$layers[[2]]$aes_params$size <- GT_MD   # n_resources 数値
+BASIS_LEVELS <- c("植物口径（種類数）", "資源口径（レコード数）")
+BASIS_PAL <- setNames(c("gray35", "gray75"), BASIS_LEVELS)
 
-p01_paper <- (p01a_paper + p01b_paper +
-  patchwork::plot_layout(widths = c(1, 0.62))) &
+# 【デザイン方針】資源口径（n_records）は植物口径（n_resources）以上に
+# なる（同一祭り内で同じ植物の複数部位が記録される場合のみ差が出る）ため、
+# 縦に並べる（dodge）のではなく、太い灰色バー（資源口径）の上に細い濃灰色
+# バー（植物口径）を重ねる「バレットチャート」方式にする。dodgeだと30祭り
+# 分の行高が低いため2本のバーが視覚的に潰れて重なり、ラベルも衝突する。
+resource_count_df <- festival_profile %>%
+  left_join(resource_count_records, by = "festival") %>%
+  mutate(n_records = replace_na(n_records, 0))
+
+count_max_01 <- max(resource_count_df$n_records, resource_count_df$n_resources, na.rm = TRUE)
+
+p01b_paper <- ggplot(resource_count_df, aes(x = festival)) +
+  geom_col(aes(y = n_records, fill = BASIS_LEVELS[2]), width = 0.68, na.rm = TRUE) +
+  geom_col(aes(y = n_resources, fill = BASIS_LEVELS[1]), width = 0.32, na.rm = TRUE) +
+  geom_text(aes(y = pmax(n_records, n_resources, na.rm = TRUE),
+                label = paste0(n_resources, "/", n_records)),
+            hjust = -0.15, size = GT_MD, color = "gray20") +
+  coord_flip() +
+  facet_pref +
+  scale_fill_manual(values = BASIS_PAL, name = NULL, breaks = BASIS_LEVELS) +
+  scale_y_continuous(limits = c(0, count_max_01 * 1.22), expand = c(0, 0)) +
+  labs(x = NULL, y = "件数（植物口径／資源口径）") +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(panel.grid.major.y = element_blank(),
+        strip.text.y = element_text(size = ST_TEXT, angle = -90),
+        legend.position = "bottom") +
   pth
 
-save_paper(p01_paper, "図-1_01_profile_age_and_resources.png",
-           width = 4.6, height = 9.2)
+save_paper(p01b_paper, "図-1_01_profile_age_and_resources.png",
+           width = 4.4, height = max(4, length(festival_order) * 0.15))
 
 # ---- 8cm幅版 ----
 w8 <- 8 / 2.54
-AX_TEXT_S1 <- 4.6
-
-p01a_s <- p01a_paper +
-  theme(axis.text.x = element_text(size = AX_TEXT_S1),
-        axis.text.y = element_text(size = AX_TEXT_S1))
-p01a_s$layers[[4]]$aes_params$stroke <- 0.5
+AX_TEXT_S1 <- 5.2
 
 p01b_s <- p01b_paper +
-  theme(axis.text.x = element_text(size = AX_TEXT_S1),
-        strip.text.y = element_text(size = AX_TEXT_S1, angle = -90))
-p01b_s$layers[[2]]$aes_params$size <- 2.0
+  theme(axis.text = element_text(size = AX_TEXT_S1),
+        axis.title = element_text(size = AX_TEXT_S1 + 0.4),
+        strip.text.y = element_text(size = AX_TEXT_S1, angle = -90),
+        legend.text = element_text(size = AX_TEXT_S1 - 0.4))
+p01b_s$layers[[3]]$aes_params$size <- 2.2   # geom_text（n/n形式ラベル）
 
-p01_paper_s <- (p01a_s + p01b_s +
-  patchwork::plot_layout(widths = c(1, 0.62))) &
-  theme(plot.margin = margin(2, 3, 2, 2),
-        axis.title = element_text(size = 5.2))
-
-save_paper(p01_paper_s, "図-1_01_profile_age_and_resources_8cm.png",
-           width = w8, height = 5.2, dpi = 900)
+save_paper(p01b_s, "図-1_01_profile_age_and_resources_8cm.png",
+           width = w8, height = max(3.2, length(festival_order) * 0.13), dpi = 900)
 
 # ==============================================================================
 # 図-2 = 03a_plant_prevalence_weighted
@@ -129,13 +129,18 @@ AX_TITLE_2 <- AX_TITLE + 2.2
 LG_TEXT_2 <- LG_TEXT + 2.2
 LG_TITLE_2 <- LG_TITLE + 2.2
 
+# 【2026-09-12追加】各植物に対応する火祭り数（raw_n、素の集計）を
+# y軸ラベルに「（n）」として付記する。
+taxon_n_lookup_02 <- setNames(as.character(prev_plot$raw_n), as.character(prev_plot$taxon))
+
 p03a_main_paper <- p03a_main + noti + pth +
   theme(plot.margin = margin(3, 10, 3, 3), axis.ticks.y = element_blank(),
         axis.text = element_text(size = AX_TEXT_2),
         axis.title = element_text(size = AX_TITLE_2)) +
   labs(x = "使用する火祭りの割合") +
   scale_x_continuous(labels = scales::percent, limits = c(0, 0.70),
-                      expand = expansion(mult = c(0, 0.03)))
+                      expand = expansion(mult = c(0, 0.03))) +
+  scale_y_discrete(labels = function(x) paste0(x, "（", taxon_n_lookup_02[x], "）"))
 # 棒棒糖の色を青からダークグレーへ
 p03a_main_paper$layers[[1]]$aes_params$colour <- "gray30"  # geom_segment
 p03a_main_paper$layers[[2]]$aes_params$colour <- "gray30"  # geom_point
@@ -217,15 +222,22 @@ save_paper(p03a_paper_s, "図-2_03a_plant_prevalence_weighted_8cm_smallfont.png"
 # 図-3 = 19d_plant_x_part
 # ==============================================================================
 
+# 【2026-09-12改訂】軸・凡例の文字を、他図のセル内数値と同程度の大きさ
+# まで拡大し、軸文字と凡例文字を揃える。凡例タイトルは「資源の割合」に
+# 変更し、キー（丸）の下に配置する。
+AX_TEXT_3  <- 9.0
+LG_TEXT_3  <- 9.0
+LG_TITLE_3 <- 9.5
+
 p19d_paper <- p19d + noti + pth +
-  theme(axis.text.x = element_text(size = AX_TEXT + 1, angle = 35, hjust = 1),
-        axis.text.y = element_text(size = AX_TEXT + 1),
-        legend.text = element_text(size = LG_TEXT + 1),
-        legend.title = element_text(size = LG_TITLE + 1),
+  theme(axis.text.x = element_text(size = AX_TEXT_3, angle = 35, hjust = 1),
+        axis.text.y = element_text(size = AX_TEXT_3),
+        legend.text = element_text(size = LG_TEXT_3),
+        legend.title = element_text(size = LG_TITLE_3),
         legend.position = "bottom") +
-  guides(size = guide_legend(nrow = 1)) +
+  guides(size = guide_legend(nrow = 1, title.position = "bottom")) +
   scale_size_area(max_size = 6, labels = scales::percent,
-                   name = "その植物の部位記録に占める割合") +
+                   name = "資源の割合") +
   scale_y_discrete(drop = FALSE, expand = expansion(add = c(0.6, 1.0)))
 # 百分比ラベル（layers[[2]]）を削除。点を「黒縁・グレー塗り」に変更。
 p19d_paper$layers[[2]] <- NULL
@@ -264,29 +276,70 @@ save_paper(p19c_paper, "図-4_19c_plant_x_use.png",
 # ==============================================================================
 # 図-5 = 17b_reason_by_plant
 # ------------------------------------------------------------------------------
-# 【百分比の定義の確認】reason_gridのshareは「資源レコード単位」ではなく
-# 「祭り×植物分類群」単位（plant_festival）で計算されている。1つの祭りで
-# 同じ植物の複数部位が記録されていても、その祭り・その植物の選定理由は
-# 「記録された全部位の理由類型の和集合」として1単位に集約済み（つまり
-# 部位ごとの提及回数は数えない）。したがってshareは「その植物を使う
-# 祭り数（府県ウェイト補正後）のうち、その理由が（部位を問わず）1回でも
-# 挙げられた祭りの割合」であり、部位単位の延べ提及回数の比率ではない。
+# 【2026-09-12改訂：資源口径への変更】セルの割合（share）の計算を、
+# 「祭り×植物分類群」単位（plant_festival、部位ごとの理由を和集合に集約）
+# から「資源レコード」単位（resource_df、部位ごとに独立した1件として扱う）
+# に変更した。同じ植物の複数部位が同じ理由を挙げている場合、資源口径では
+# 部位の数だけ数える（図-4・図-7と同じ「府県ウェイトなし・観測標本の記述」
+# という資源口径の方針に揃えた）。
+# 行ラベルの「（n）」は従来通り taxon_denom（植物口径・祭り数）のままとし、
+# 括弧内は数字のみ表示する（他図との対応づけ用の識別番号であり、セル内%の
+# 分母ではない。分母の定義は図左上に注記する）。
 # 【2026-09-11改訂】上位3セルのみ着色する方式をやめ、0%以外は全セルを
 # 連続グラデーション（他図と同じ青系）で着色。灰色は使わない代わりに、
 # セル罫線をグレーにして行・列のラベル対応を追いやすくする。
 # ==============================================================================
 
-p17b_main_paper <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label)) +
+reason_long_res <- resource_df %>%
+  filter(!is.na(reason_types)) %>%
+  separate_rows(reason_types, sep = "\\|") %>%
+  rename(rtype = reason_types) %>%
+  mutate(rlabel = factor(unname(REASON_LABELS[rtype]), levels = unname(REASON_LABELS)))
+
+taxon_n_rec_17b <- resource_df %>%
+  filter(!is.na(reason_types)) %>%
+  count(resource_taxon, name = "n_rec")
+
+# 行ラベルは植物口径（taxon_denom$n_fes、祭り数）のまま。括弧内は数字のみ。
+label_order_17b_num <- taxon_denom %>%
+  mutate(resource_taxon = factor(resource_taxon, levels = levels(taxon_order_17b))) %>%
+  arrange(resource_taxon) %>%
+  mutate(taxon_label = paste0(resource_taxon, "（", n_fes, "）")) %>%
+  pull(taxon_label)
+
+reason_by_taxon_res <- reason_long_res %>%
+  filter(resource_taxon %in% taxon_denom$resource_taxon) %>%
+  count(resource_taxon, rtype, rlabel, name = "n") %>%
+  left_join(taxon_n_rec_17b, by = "resource_taxon") %>%
+  left_join(taxon_denom %>% select(resource_taxon, n_fes), by = "resource_taxon") %>%
+  mutate(share = n / n_rec,
+         taxon_label = paste0(resource_taxon, "（", n_fes, "）"))
+
+reason_grid_res <- expand_grid(
+  taxon_label = label_order_17b_num,
+  rlabel      = factor(unname(REASON_LABELS), levels = unname(REASON_LABELS))
+) %>%
+  left_join(reason_by_taxon_res %>% select(taxon_label, rlabel, share),
+            by = c("taxon_label", "rlabel")) %>%
+  mutate(share = ifelse(is.na(share), 0, share),
+         taxon_label = factor(taxon_label, levels = rev(label_order_17b_num)))
+
+p17b_main_paper <- ggplot(reason_grid_res, aes(x = rlabel, y = taxon_label)) +
   geom_tile(aes(fill = ifelse(share > 0, share, NA)), color = "gray75", linewidth = 0.35) +
-  geom_text(aes(label = ifelse(share > 0, scales::percent(share, accuracy = 1), "")),
+  geom_text(aes(label = ifelse(share > 0, scales::percent(share, accuracy = 1, suffix = ""), "")),
             size = 2.9, family = "HiraginoSans-W3",
-            color = ifelse(reason_grid$share > 0.5, "white", "gray20")) +
+            color = ifelse(reason_grid_res$share > 0.5, "white", "gray20")) +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
-                      labels = scales::percent, name = "その理由を挙げた割合") +
-  labs(x = NULL, y = NULL) +
+                      limits = c(0, 1), breaks = c(0, 0.5, 1),
+                      labels = scales::percent, name = "各理由の割合",
+                      guide = guide_colorbar(title.position = "top",
+                                             barwidth = unit(70, "pt"),
+                                             barheight = unit(6, "pt"))) +
+  labs(x = NULL, y = NULL, title = "植物（祭り数）　割合（%）") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid = element_blank(),
-        axis.text.x = element_text(angle = 30, hjust = 1)) +
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        plot.title = element_text(size = AX_TEXT, face = "plain", hjust = 0)) +
   pth + theme(plot.margin = margin(3, 10, 3, 3))
 
 # --- 代替可能性の内訳（右パネル）---
@@ -294,16 +347,16 @@ p17b_main_paper <- ggplot(reason_grid, aes(x = rlabel, y = taxon_label)) +
 # 4類型のどこにも属さないため除外されていたが、確認したところこれらは
 # 「他の資源の代替品として使われている植物」（is_substitute_material=TRUE、
 # 結果2の代替可能性区分コード4）であり、独自の意味を持つカテゴリーである。
-# そこで「代替品として使用」という4つ目の区分を追加し、着色・凡例に含める。
-SUBST4 <- c("代替可", "代替困難", "代替不可", "代替品として使用")
+# そこで「代替品」という4つ目の区分を追加し、着色・凡例に含める。
+SUBST4 <- c("代替可", "代替困難", "代替不可", "代替品")
 SUBST4_PAL <- c("代替可" = "#4DAF4A", "代替困難" = "#FF7F00",
-                "代替不可" = "#E41A1C", "代替品として使用" = "#6A51A3")
+                "代替不可" = "#E41A1C", "代替品" = "#6A51A3")
 
 subst_share_17b_pp <- resource_df %>%
   filter(resource_taxon %in% taxon_denom$resource_taxon) %>%
   filter(!is.na(subst_score) | is_substitute_material) %>%
   mutate(subst_label = case_when(
-    is_substitute_material ~ "代替品として使用",
+    is_substitute_material ~ "代替品",
     subst_score == 1        ~ "代替可",
     subst_score == 2        ~ "代替困難",
     subst_score == 3        ~ "代替不可",
@@ -319,11 +372,12 @@ subst_share_17b_pp <- resource_df %>%
   ungroup() %>%
   mutate(pct = ifelse(is.nan(pct), NA_real_, pct)) %>%
   left_join(taxon_denom %>% select(resource_taxon, n_fes), by = "resource_taxon") %>%
-  mutate(taxon_label = factor(paste0(resource_taxon, "（", n_fes, "祭り）"), levels = rev(label_order_17b)))
+  mutate(taxon_label = factor(paste0(resource_taxon, "（", n_fes, "）"), levels = rev(label_order_17b_num)))
 
 p17b_subst_paper <- ggplot(subst_share_17b_pp, aes(x = pct, y = taxon_label, fill = subst_label)) +
   geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
-  scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE) +
+  scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE,
+                     guide = guide_legend(nrow = 1, title.position = "top")) +
   scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
   labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
@@ -331,9 +385,22 @@ p17b_subst_paper <- ggplot(subst_share_17b_pp, aes(x = pct, y = taxon_label, fil
         panel.grid.major.y = element_blank()) +
   pth + theme(plot.margin = margin(3, 5, 3, 10))
 
+# 【2026-09-12改訂】左右2つの凡例（理由の割合＝連続グラデーション、
+# 代替可能性＝離散4区分）を1行に横並びで統合する。キーと文字の間の
+# 余白を詰め、省スペース化する。
+p17b_legend_theme <- theme(
+  legend.box = "horizontal",
+  legend.direction = "horizontal",
+  legend.spacing.x = unit(14, "pt"),
+  legend.key.spacing.x = unit(0, "pt"),
+  legend.text = element_text(margin = margin(l = 0)),
+  legend.margin = margin(0, 2, 0, 2)
+)
+
 p17b_paper <- (p17b_main_paper + p17b_subst_paper +
   patchwork::plot_layout(widths = c(3, 1), guides = "collect")) &
-  theme(legend.position = "bottom", legend.box = "vertical")
+  theme(legend.position = "bottom") &
+  p17b_legend_theme
 
 # 【注】10列の選定理由カテゴリーがあるため、半ページ幅には収まらない。
 save_paper(p17b_paper, "図-5_17b_reason_by_plant.png",
@@ -639,25 +706,25 @@ save_final <- function(p, name, width, height, dpi = 900) {
   cat("final saved:", name, sprintf("(%.2f x %.2f in)\n", width, height))
 }
 
-# ---- 図-1（8cm版、非ヒートマップ）文字を拡大 ----
-p01_final <- p01_paper_s &
-  theme(axis.text = element_text(size = 5.6),
-        axis.title = element_text(size = 6.0),
-        strip.text = element_text(size = 5.6))
+# ---- 図-1（8cm版、非ヒートマップ）文字をさらに拡大。1パネルのみに
+#      なったため高さを大幅に縮小する ----
+p01_final <- p01b_s +
+  theme(axis.text = element_text(size = 6.4),
+        axis.title = element_text(size = 6.8),
+        strip.text = element_text(size = 6.2),
+        legend.text = element_text(size = 6.0))
+p01_final$layers[[3]]$aes_params$size <- 2.6   # geom_text（n/n形式ラベル）
 save_final(p01_final, "図-1_01_profile_age_and_resources.png",
-           width = w8, height = 5.8)
+           width = w8, height = max(3.4, length(festival_order) * 0.135))
 
 # ---- 図-2（8cm版、非ヒートマップ）----
 p02_final <- p03a_paper_s + final_text_theme
 save_final(p02_final, "図-2_03a_plant_prevalence_weighted.png",
            width = w8, height = 3.4)
 
-# ---- 図-3（8cm不可、元の幅のまま。非ヒートマップ＝散布バブル図）文字を拡大 ----
-p03_final <- p19d_paper +
-  theme(axis.text = element_text(size = 7.0),
-        axis.title = element_text(size = 7.5),
-        legend.text = element_text(size = 7.0),
-        legend.title = element_text(size = 7.5))
+# ---- 図-3（8cm不可、元の幅のまま。非ヒートマップ＝散布バブル図）----
+# p19d_paper側で既に軸・凡例文字を拡大済み（AX_TEXT_3等）なのでそのまま使う。
+p03_final <- p19d_paper
 save_final(p03_final, "図-3_19d_plant_x_part.png",
            width = 6.2, height = max(6, length(part_taxon_order) * 0.34))
 
@@ -687,17 +754,19 @@ save_final(p04_final, "図-4_19c_plant_x_use.png",
 
 # ---- 図-5（8cm不可、元の幅のまま。左パネルのみヒートマップ）----
 # 文字サイズをセル内の百分比（geom_textのsize=2.9mm≒8.3pt）に揃える。
-# 代替可能性の凡例は「代替品として使用」（新規に代替品として使われる植物）を
-# 最後に固定表示（breaksを明示し、position_stack由来の並び崩れを防ぐ）。
+# 代替可能性の凡例は「代替品」を最後に固定表示（breaksを明示し、
+# position_stack由来の並び崩れを防ぐ）。凡例は1行に横並び統合。
 F5_TEXT  <- 8.3
 F5_TITLE <- 8.8
 p17b_main_final <- recolor_tiles(p17b_main_paper) + heat_frame_theme +
   theme(axis.text = element_text(size = F5_TEXT),
         axis.title = element_text(size = F5_TITLE),
         legend.text = element_text(size = F5_TEXT),
-        legend.title = element_text(size = F5_TITLE))
+        legend.title = element_text(size = F5_TITLE),
+        plot.title = element_text(size = F5_TEXT, face = "plain", hjust = 0))
 p17b_subst_final <- p17b_subst_paper +
-  scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE, breaks = SUBST4) +
+  scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE, breaks = SUBST4,
+                     guide = guide_legend(nrow = 1, title.position = "top")) +
   theme(axis.text = element_text(size = F5_TEXT),
         axis.title = element_text(size = F5_TITLE),
         legend.text = element_text(size = F5_TEXT),
@@ -705,7 +774,8 @@ p17b_subst_final <- p17b_subst_paper +
 
 p05_final <- (p17b_main_final + p17b_subst_final +
   patchwork::plot_layout(widths = c(3, 1), guides = "collect")) &
-  theme(legend.position = "bottom", legend.box = "vertical")
+  theme(legend.position = "bottom") &
+  p17b_legend_theme
 save_final(p05_final, "図-5_17b_reason_by_plant.png",
            width = 7.8, height = max(7.0, nrow(taxon_denom) * 0.22 + 0.6))
 
