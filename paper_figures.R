@@ -940,7 +940,7 @@ p12_final <- recolor_tiles(p27a_final_base) + heat_frame_theme +
   theme(legend.text = element_text(size = F_AX_TEXT * 2),
         legend.title = element_text(size = F_AX_TITLE * 2))
 save_final(p12_final, "図-12_27a_topic_x_management.png",
-           width = w8, height = 2.5)
+           width = w8, height = 2.0)
 
 cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$")), "枚を",
     FINAL_DIR, "に出力 ===\n")
