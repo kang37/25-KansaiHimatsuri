@@ -22,15 +22,9 @@ FINAL_DIR <- "data_proc/paper_20260912"
 
 source("paper_figures.R")
 
-# --- 図12：元データ（結果6・mt6）がraw_data_agg.xlsxにないため、
-#     既存の確認済み版をコピーする。図1は右パネル（資源数）がresource_df
-#     （raw_data_agg由来、USE_RAW_DATA_AGGの影響を受ける）に依存するため
-#     コピーせず、paper_figures.R内で新データから生成し直す。 ---
-OLD_FINAL_DIR <- "data_proc/20260902/paper_figures_8cm"
-for (f in c("図-12_27a_topic_x_management.png")) {
-  ok <- file.copy(file.path(OLD_FINAL_DIR, f), file.path(FINAL_DIR, f), overwrite = TRUE)
-  cat("copied (unchanged data):", f, "->", ok, "\n")
-}
+# --- 図12：元データ（結果6・mt6）はraw_data_agg.xlsxにないためデータ自体は
+#     変わらないが、2026-09-13にラベル文言・フォントサイズを見直したため
+#     もうコピーせず、paper_figures.R内で（同じデータのまま）都度描き直す。 ---
 
 # --- 図6・図9：今回は不要 ---
 for (f in c("図-6_03b_plant_prevalence_by_pref.png",

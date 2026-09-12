@@ -336,20 +336,19 @@ p17b_main_paper <- ggplot(reason_grid_res, aes(x = rlabel, y = taxon_label)) +
                       guide = guide_colorbar(title.position = "left",
                                              barwidth = unit(70, "pt"),
                                              barheight = unit(6, "pt"))) +
-  # 【2026-09-12改訂】「植物（祭り数）」はplot.tag（plot全体基準＝軸ラベルを
-  # 含めた左端に配置）、「割合（%）」はplot.title（デフォルトのpanel基準＝
-  # タイル部分の左端に配置）に分けることで、前者は軸ラベルの上、後者は
-  # パネルの左端の上にそれぞれ揃う。
-  labs(x = NULL, y = NULL, title = "割合（%）", tag = "植物（祭り数）") +
+  # 【2026-09-13改訂】図-4と同じ方式：annotate()でパネル座標系（x=-Inf）に
+  # 直接描画し、「植物（祭り数）」の右端と「割合（%）」の左端をタイル部分の
+  # 左境界に正確に揃える（plot.title/plot.tagの近似配置はやめる）。
+  annotate("text", x = -Inf, y = Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
+           size = AX_TEXT / 2.845, family = "HiraginoSans-W3") +
+  annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
+           size = AX_TEXT / 2.845, family = "HiraginoSans-W3") +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid = element_blank(),
-        axis.text.x = element_text(angle = 30, hjust = 1),
-        plot.title = element_text(size = AX_TEXT, face = "plain", hjust = 0),
-        plot.title.position = "panel",
-        plot.tag = element_text(size = AX_TEXT, face = "plain", hjust = 0),
-        plot.tag.position = c(0, 1),
-        plot.tag.location = "plot") +
-  pth + theme(plot.margin = margin(14, 10, 3, 3))
+        axis.text.x = element_text(angle = 30, hjust = 1)) +
+  pth + theme(plot.margin = margin(18, 10, 3, 3))
 
 # --- 代替可能性の内訳（右パネル）---
 # 【2026-09-11改訂】代替可能性が空値（NA）の資源は、元々「代替不可」等の
@@ -451,23 +450,28 @@ p23c_paper <- p23c + noti + pth +
   theme(legend.position = "bottom") +
   scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式", drop = FALSE,
                      labels = function(x) sub("^[①②③④⑤]\\s*", "", x)) +
+  scale_x_discrete(labels = function(x) sub("n=", "", x)) +
+  labs(y = "調達方式の割合") +
   guides(fill = guide_legend(nrow = 1))
-# 【注】n=件数は行ラベル（taxon_label）に埋め込み済みなので専用のgeom_textはない。
+# 【注】件数は行ラベル（taxon_label）に埋め込み済みなので専用のgeom_textはない。
 # 凡例から番号を外して短くしたので1行に収まる。
 
 save_paper(p23c_paper, "図-7_23c_method_type_by_plant.png",
            width = 6.2, height = max(6, n_distinct(method_type_long$taxon_label) * 0.17))
 
 # ---- 8cm幅版 ----
+# 【2026-09-13改訂】凡例を1行に収め、キーと文字の間の余白を詰める。
 p23c_s <- p23c_paper +
   theme(axis.text = element_text(size = 4.6),
         axis.title = element_text(size = 5.0),
-        legend.text = element_text(size = 4.2),
+        legend.text = element_text(size = 4.2, margin = margin(l = 0)),
         legend.title = element_text(size = 4.6),
         legend.box.spacing = unit(2, "pt"),
+        legend.spacing.x = unit(4, "pt"),
+        legend.key.spacing.x = unit(0, "pt"),
         legend.margin = margin(0, 0, 0, 0),
         legend.key.size = unit(7, "pt")) +
-  guides(fill = guide_legend(nrow = 2))
+  guides(fill = guide_legend(nrow = 1))
 
 save_paper(p23c_s, "図-7_23c_method_type_by_plant_8cm.png",
            width = w8, height = 3.3, dpi = 900)
@@ -490,23 +494,27 @@ p28_paper <- ggplot(change_summary_pp, aes(x = taxon_label, y = pct, fill = chan
   geom_col(width = 0.7) +
   coord_flip() +
   scale_fill_manual(values = CHANGE_PAL, name = "調達地の変化", drop = FALSE) +
+  scale_x_discrete(labels = function(x) sub("件）", "）", x)) +
   scale_y_continuous(labels = scales::percent) +
-  labs(x = NULL, y = "資源レコードの割合") +
+  labs(x = NULL, y = "調達地変化の割合") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank()) +
   pth + theme(legend.position = "bottom") +
-  guides(fill = guide_legend(nrow = 2))
+  guides(fill = guide_legend(nrow = 1))
 
 save_paper(p28_paper, "図-8_28_procurement_change_by_plant.png",
            width = 4.7, height = max(5, nrow(change_denom) * 0.17))
 
 # ---- 8cm幅版 ----
+# 【2026-09-13改訂】凡例を1行に収め、キーと文字の間の余白を詰める。
 p28_s <- p28_paper +
   theme(axis.text = element_text(size = 4.6),
         axis.title = element_text(size = 5.0),
-        legend.text = element_text(size = 4.2),
+        legend.text = element_text(size = 4.2, margin = margin(l = 0)),
         legend.title = element_text(size = 4.6),
         legend.box.spacing = unit(2, "pt"),
+        legend.spacing.x = unit(4, "pt"),
+        legend.key.spacing.x = unit(0, "pt"),
         legend.margin = margin(0, 0, 0, 0),
         legend.key.size = unit(7, "pt"))
 
@@ -603,23 +611,27 @@ p28b_paper <- ggplot(landscape_change_summary_pp, aes(x = land_label, y = pct, f
   geom_col(width = 0.7) +
   coord_flip() +
   scale_fill_manual(values = CHANGE_PAL, name = "調達地の変化", drop = FALSE) +
+  scale_x_discrete(labels = function(x) sub("件）", "）", x)) +
   scale_y_continuous(labels = scales::percent) +
-  labs(x = NULL, y = "資源レコードの割合") +
+  labs(x = NULL, y = "調達地の割合") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank()) +
   pth + theme(legend.position = "bottom") +
-  guides(fill = guide_legend(nrow = 2))
+  guides(fill = guide_legend(nrow = 1))
 
 save_paper(p28b_paper, "図-11_28b_procurement_change_by_landscape.png",
            width = 4.7, height = max(4, nrow(landscape_change_denom) * 0.30))
 
 # ---- 8cm幅版（10行のみなので図-8より短く収まる）----
+# 【2026-09-13改訂】凡例を1行に収め、キーと文字の間の余白を詰める。
 p28b_s <- p28b_paper +
   theme(axis.text = element_text(size = 4.6),
         axis.title = element_text(size = 5.0),
-        legend.text = element_text(size = 4.2),
+        legend.text = element_text(size = 4.2, margin = margin(l = 0)),
         legend.title = element_text(size = 4.6),
         legend.box.spacing = unit(2, "pt"),
+        legend.spacing.x = unit(4, "pt"),
+        legend.key.spacing.x = unit(0, "pt"),
         legend.margin = margin(0, 0, 0, 0),
         legend.key.size = unit(7, "pt"))
 
@@ -630,21 +642,25 @@ save_paper(p28b_s, "図-11_28b_procurement_change_by_landscape_8cm.png",
 # 図-12 = 27a_topic_x_management
 # ==============================================================================
 
-# str_wrap()は単語間のスペースで改行するため、スペースのない日本語では
-# 機能しない（見た目上ラベルが一切折り返されず重なる）。文字数ベースで
-# 強制的に改行する自前の関数を使う。
-wrap_cjk <- function(x, width = 7) {
-  vapply(x, function(s) {
-    chars <- strsplit(s, "")[[1]]
-    idx <- seq_along(chars)
-    groups <- split(chars, ceiling(idx / width))
-    paste(vapply(groups, paste, character(1), collapse = ""), collapse = "\n")
-  }, character(1), USE.NAMES = FALSE)
-}
+# 【2026-09-13改訂】項目名を短縮したため折り返しが不要になった
+# （wrap_cjk()は廃止）。x軸（管理活動）・y軸（話題頻度）ともに短い
+# 表示名に置き換える。
+mgmt_relabel <- c(
+  "行っていない" = "なし",
+  "採取・管理のみ（栽培なし）" = "採取",
+  "全面的な生産（栽培・植栽あり）" = "生産"
+)
+topic_relabel <- c(
+  "話題にあがらない" = "話さない",
+  "詳しくは話さない" = "ほとんど話さない",
+  "時々話す" = "時々話す",
+  "よく話す" = "よく話す"
+)
 
 p27a_paper <- p27a + noti + pth +
   theme(axis.text.x = element_text(size = AX_TEXT - 0.7, lineheight = 0.9)) +
-  scale_x_discrete(labels = function(x) wrap_cjk(x, 5))
+  scale_x_discrete(labels = function(x) unname(mgmt_relabel[x])) +
+  scale_y_discrete(labels = function(x) unname(topic_relabel[x]))
 p27a_paper$layers[[2]]$aes_params$size <- GT_LG
 
 save_paper(p27a_paper, "図-12_27a_topic_x_management.png",
@@ -801,12 +817,7 @@ p17b_main_final <- recolor_tiles(p17b_main_paper) + heat_frame_theme +
   theme(axis.text = element_text(size = F5_TEXT),
         axis.title = element_text(size = F5_TITLE),
         legend.text = element_text(size = F5_TEXT),
-        legend.title = element_text(size = F5_TITLE),
-        plot.title = element_text(size = F5_TEXT, face = "plain", hjust = 0),
-        plot.title.position = "panel",
-        plot.tag = element_text(size = F5_TEXT, face = "plain", hjust = 0),
-        plot.tag.position = c(0, 1),
-        plot.tag.location = "plot")
+        legend.title = element_text(size = F5_TITLE))
 p17b_subst_final <- p17b_subst_paper +
   scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE, breaks = SUBST4,
                      guide = guide_legend(nrow = 1, title.position = "left")) +
@@ -884,23 +895,26 @@ mat_24a_complete <- landscape_records %>%
          resource_taxon = factor(resource_taxon, levels = taxon_order_24_pp),
          landscape_type = factor(landscape_type, levels = land_order_24_pp))
 
+# 【2026-09-13改訂】軸フォントを拡大、凡例は縮小してタイトルを短く
+# 「土地利用の割合」に変更、セル内の数値ラベルは削除する。
 p10_final <- ggplot(mat_24a_complete, aes(x = landscape_type, y = resource_taxon, fill = pct)) +
   geom_tile(color = "black", linewidth = 0.15) +
-  geom_text(aes(label = cell_label), size = 1.6, family = "HiraginoSans-W3", color = "gray15") +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
-                      labels = scales::percent, name = "その植物を使う祭りのうち\nその景観に由来する割合") +
+                      labels = scales::percent, name = "土地利用の割合",
+                      guide = guide_colorbar(barwidth = unit(28, "pt"),
+                                             barheight = unit(45, "pt"))) +
   labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
   heat_frame_theme +
-  theme(axis.text = element_text(size = 5.0),
-        axis.title = element_text(size = 5.4),
-        legend.text = element_text(size = 4.6),
-        legend.title = element_text(size = 5.0, lineheight = 0.9))
+  theme(axis.text = element_text(size = 7.0),
+        axis.title = element_text(size = 7.5),
+        legend.text = element_text(size = 4.2),
+        legend.title = element_text(size = 4.6, lineheight = 0.9))
 # 【注】文字拡大により軸ラベルが幅を取るため、9列のタイル部分を確保する
 # には8cm(w8)では足りない。字が重ならない最低限としてやや幅を広げる。
 save_final(p10_final, "図-10_24a_plant_x_landscape.png",
-           width = 3.7, height = 4.8)
+           width = 4.2, height = 4.8)
 
 # ---- 図-11（8cm版、非ヒートマップ。文字サイズの基準そのもの）----
 p11_final <- p28b_s + final_text_theme
@@ -908,9 +922,25 @@ save_final(p11_final, "図-11_28b_procurement_change_by_landscape.png",
            width = w8, height = 1.9)
 
 # ---- 図-12（8cm版、ヒートマップ）高さを低くする ----
-p12_final <- recolor_tiles(p27a_s) + heat_frame_theme + final_text_theme
+# 【2026-09-13改訂】final_text_theme（他図と共通の8cm縮小サイズ）に対して、
+# 軸文字は2倍に拡大、逆に凡例は縮小する。
+# 【2026-09-13改訂】p27a_s（axis.title等を既に一度上書き済み）の上にさらに
+# axis.text/axis.titleを上書きすると、この特定の図でだけ軸タイトルの文字が
+# 異常に巨大化する現象に遭遇した（原因不明・ggplot2側の挙動の可能性）。
+# 対策として、final版はp27a_paperから直接（軸サイズの上書きを1回だけに
+# して）組み立て直す。
+p27a_final_base <- p27a_paper +
+  theme(axis.text.x = element_text(size = F_AX_TEXT * 2, lineheight = 0.9),
+        axis.text.y = element_text(size = F_AX_TEXT * 2),
+        axis.title = element_text(size = F_AX_TITLE * 2))
+p27a_final_base$layers[[2]]$aes_params$size <- 2.6
+
+p12_final <- recolor_tiles(p27a_final_base) + heat_frame_theme +
+  theme(legend.text = element_text(size = 3.2),
+        legend.title = element_text(size = 3.6),
+        legend.key.size = unit(6, "pt"))
 save_final(p12_final, "図-12_27a_topic_x_management.png",
-           width = w8, height = 2.5)
+           width = w8, height = 2.8)
 
 cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$")), "枚を",
     FINAL_DIR, "に出力 ===\n")
