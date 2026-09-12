@@ -914,7 +914,7 @@ p10_final <- ggplot(mat_24a_complete, aes(x = landscape_type, y = resource_taxon
 # 【注】文字拡大により軸ラベルが幅を取るため、9列のタイル部分を確保する
 # には8cm(w8)では足りない。字が重ならない最低限としてやや幅を広げる。
 save_final(p10_final, "図-10_24a_plant_x_landscape.png",
-           width = 4.2, height = 4.8)
+           width = 3.7, height = 4.8)
 
 # ---- 図-11（8cm版、非ヒートマップ。文字サイズの基準そのもの）----
 p11_final <- p28b_s + final_text_theme
