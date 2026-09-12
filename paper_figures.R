@@ -86,37 +86,43 @@ resource_count_df <- festival_profile %>%
 count_max_01 <- max(resource_count_df$n_records, resource_count_df$n_resources, na.rm = TRUE)
 
 # 【2026-09-12改訂】バー上のn/n数値ラベルを削除（データはバーの長さと
-# 凡例の色だけで示す）。ラベル分の余白が不要になったのでx軸の拡大率を
-# 縮小し、その分だけ全体の高さを拡大する。
+# 凡例の色だけで示す）。
+# 【2026-09-13改訂】横版（反時計回りに90度回転したレイアウト）に変更。
+# 祭りを横軸、件数を縦軸にし、府県ごとの帯を左右に並べる
+# （facet_grid(pref~.)→facet_grid(.~pref)、free_y→free_x）。
+# 凡例は下に配置したまま、文字サイズを少し拡大する。
+w8 <- 8 / 2.54
+AX_TEXT_S1 <- 6.0
+
+facet_pref_h <- facet_grid(. ~ pref, scales = "free_x", space = "free_x")
+
 p01b_paper <- ggplot(resource_count_df, aes(x = festival)) +
   geom_col(aes(y = n_records, fill = BASIS_LEVELS[2]), width = 0.68, na.rm = TRUE) +
   geom_col(aes(y = n_resources, fill = BASIS_LEVELS[1]), width = 0.32, na.rm = TRUE) +
-  coord_flip() +
-  facet_pref +
+  facet_pref_h +
   scale_fill_manual(values = BASIS_PAL, name = NULL, breaks = BASIS_LEVELS) +
   scale_y_continuous(limits = c(0, count_max_01 * 1.05), expand = c(0, 0)) +
   labs(x = NULL, y = "件数") +
   theme_bw(base_family = "HiraginoSans-W3") +
-  theme(panel.grid.major.y = element_blank(),
-        strip.text.y = element_text(size = ST_TEXT, angle = -90),
+  theme(panel.grid.major.x = element_blank(),
+        axis.text.x = element_text(angle = 60, hjust = 1),
+        strip.text.x = element_text(size = ST_TEXT),
         legend.position = "bottom") +
   pth
 
 save_paper(p01b_paper, "図-1_01_profile_age_and_resources.png",
-           width = 4.4, height = max(5.5, length(festival_order) * 0.22))
+           width = max(11, length(festival_order) * 0.36), height = 5.0)
 
-# ---- 8cm幅版 ----
-w8 <- 8 / 2.54
-AX_TEXT_S1 <- 5.2
-
+# ---- 8cm幅版は横版では意味をなさない（30祭りを横に並べるため幅が必要）
+# ので省略し、最終版の幅は「最終セット」節で個別に決める ----
 p01b_s <- p01b_paper +
   theme(axis.text = element_text(size = AX_TEXT_S1),
         axis.title = element_text(size = AX_TEXT_S1 + 0.4),
-        strip.text.y = element_text(size = AX_TEXT_S1, angle = -90),
+        strip.text.x = element_text(size = AX_TEXT_S1),
         legend.text = element_text(size = AX_TEXT_S1 - 0.4))
 
 save_paper(p01b_s, "図-1_01_profile_age_and_resources_8cm.png",
-           width = w8, height = max(4.5, length(festival_order) * 0.19), dpi = 900)
+           width = max(9, length(festival_order) * 0.30), height = 4.2, dpi = 900)
 
 # ==============================================================================
 # 図-2 = 03a_plant_prevalence_weighted
@@ -736,13 +742,15 @@ save_final <- function(p, name, width, height, dpi = 900) {
 
 # ---- 図-1（8cm版、非ヒートマップ）文字をさらに拡大。1パネルのみに
 #      なったため高さを大幅に縮小する ----
-p01_final <- p01b_s +
-  theme(axis.text = element_text(size = 6.4),
-        axis.title = element_text(size = 6.8),
-        strip.text = element_text(size = 6.2),
-        legend.text = element_text(size = 6.0))
+# 【2026-09-13改訂】横版のため8cm幅の制約から外れ、他の横幅図（図-3・
+# 図-4等）と同様に必要な幅を確保する。文字サイズも少し拡大する。
+p01_final <- p01b_paper +
+  theme(axis.text = element_text(size = 7.0),
+        axis.title = element_text(size = 7.5),
+        strip.text = element_text(size = 7.0),
+        legend.text = element_text(size = 6.5))
 save_final(p01_final, "図-1_01_profile_age_and_resources.png",
-           width = w8, height = max(4.8, length(festival_order) * 0.20))
+           width = max(11, length(festival_order) * 0.36), height = 4.2)
 
 # ---- 図-2（8cm版、非ヒートマップ）----
 p02_final <- p03a_paper_s + final_text_theme
@@ -786,8 +794,6 @@ p04_final <- ggplot(mat_19c_complete, aes(x = use_cat, y = resource_taxon,
   geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1, suffix = ""), "")),
             size = 3.0, family = "HiraginoSans-W3",
             color = ifelse(mat_19c_complete$pct > 0.75, "white", "gray15")) +
-  annotate("text", x = -Inf, y = Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
-           size = F4_AX_TEXT / 2.845, family = "HiraginoSans-W3") +
   annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
            size = F4_AX_TEXT / 2.845, family = "HiraginoSans-W3") +
   coord_cartesian(clip = "off") +
@@ -944,4 +950,76 @@ save_final(p12_final, "図-12_27a_topic_x_management.png",
 
 cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$")), "枚を",
     FINAL_DIR, "に出力 ===\n")
+
+# ==============================================================================
+# 図に対応する数値データのCSV書き出し（2026-09-13追加）
+# ------------------------------------------------------------------------------
+# 図-1・2・3・7・8・10・11について、図に描画した数値をそのままCSVで出力する。
+# ヒートマップ・積み上げ棒グラフ系（3・7・8・10・11）は図と同じ縦横（行＝植物
+# または景観、列＝カテゴリー）のワイド形式に、図-1・2は図の構造に沿った表に
+# する。パーセントは図中と同じ丸め方（小数第1位）の数値（0-100）で表す。
+# ==============================================================================
+
+export_table <- function(df, filename) {
+  path <- file.path(FINAL_DIR, filename)
+  write.csv(df, path, row.names = FALSE, fileEncoding = "UTF-8")
+  cat("exported:", filename, "\n")
+}
+
+# 図-1: 祭りごとの植物種類数・資源種類数
+tbl01 <- resource_count_df %>%
+  transmute(祭り = as.character(festival), 府県 = as.character(pref),
+            植物種類数 = n_resources, 資源種類数 = n_records)
+export_table(tbl01, "図-1_data.csv")
+
+# 図-2: 植物ごとの利用頻度（左）と日常利用内訳（右、%）
+tbl02_prev <- prev_plot %>%
+  transmute(植物 = as.character(taxon), 使用火祭り数 = raw_n,
+            使用する火祭りの割合 = round(raw_prev * 100, 1))
+tbl02_daily <- daily_share_03_pp %>%
+  mutate(resource_taxon = as.character(resource_taxon), pct = round(pct * 100, 1)) %>%
+  pivot_wider(id_cols = resource_taxon, names_from = daily_label, values_from = pct)
+tbl02 <- tbl02_prev %>%
+  left_join(tbl02_daily, by = c("植物" = "resource_taxon"))
+export_table(tbl02, "図-2_data.csv")
+
+# 図-3: 植物×使用部位（その植物の部位記録に占める割合、%）
+tbl03 <- mat_19d %>%
+  mutate(resource_taxon = as.character(resource_taxon), part = as.character(part),
+         pct = round(pct * 100, 1)) %>%
+  pivot_wider(id_cols = c(resource_taxon, n_taxon), names_from = part, values_from = pct) %>%
+  rename(植物 = resource_taxon, 部位記録数 = n_taxon)
+export_table(tbl03, "図-3_data.csv")
+
+# 図-7: 植物×調達方式（%）
+tbl07 <- method_type_long %>%
+  mutate(resource_taxon = as.character(resource_taxon), method_type = as.character(method_type),
+         pct = round(pct * 100, 1)) %>%
+  pivot_wider(id_cols = c(resource_taxon, n_total), names_from = method_type, values_from = pct) %>%
+  rename(植物 = resource_taxon, 記録数 = n_total)
+export_table(tbl07, "図-7_data.csv")
+
+# 図-8: 植物×調達地の変化（%）
+tbl08 <- change_summary_pp %>%
+  mutate(resource_taxon = as.character(resource_taxon), change_cat = as.character(change_cat),
+         pct = round(pct * 100, 1)) %>%
+  pivot_wider(id_cols = c(resource_taxon, n_rec), names_from = change_cat, values_from = pct) %>%
+  rename(植物 = resource_taxon, 記録数 = n_rec)
+export_table(tbl08, "図-8_data.csv")
+
+# 図-10: 植物×調達地の景観（その植物を使う祭りのうちその景観に由来する割合、%）
+tbl10 <- mat_24a_complete %>%
+  mutate(resource_taxon = as.character(resource_taxon), landscape_type = as.character(landscape_type),
+         pct = round(pct * 100, 1)) %>%
+  pivot_wider(id_cols = c(resource_taxon, n_taxon_fest), names_from = landscape_type, values_from = pct) %>%
+  rename(植物 = resource_taxon, 使用祭り数 = n_taxon_fest)
+export_table(tbl10, "図-10_data.csv")
+
+# 図-11: 生態景観類型×調達地の変化（%）
+tbl11 <- landscape_change_summary_pp %>%
+  mutate(landscape_type = as.character(landscape_type), change_cat = as.character(change_cat),
+         pct = round(pct * 100, 1)) %>%
+  pivot_wider(id_cols = c(landscape_type, n_rec), names_from = change_cat, values_from = pct) %>%
+  rename(景観類型 = landscape_type, 記録数 = n_rec)
+export_table(tbl11, "図-11_data.csv")
 
