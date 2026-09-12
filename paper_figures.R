@@ -19,7 +19,7 @@ source("main2.R")
 
 suppressMessages(library(ggnewscale))
 
-PAPER_DIR <- file.path(OUTPUT_DIR, "paper_figures")
+if (!exists("PAPER_DIR")) PAPER_DIR <- file.path(OUTPUT_DIR, "paper_figures")
 dir.create(PAPER_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # --- 印刷用の文字サイズ（pt、最終貼り込み幅で実際に読める大きさ） -----------
@@ -595,7 +595,7 @@ cat("\n=== 論文用図表", length(list.files(PAPER_DIR, pattern = "\\.png$")),
 # 変更、外枠（panel.border）と目盛線（axis.ticks）を除去する。
 # ==============================================================================
 
-FINAL_DIR <- file.path(OUTPUT_DIR, "paper_figures_8cm")
+if (!exists("FINAL_DIR")) FINAL_DIR <- file.path(OUTPUT_DIR, "paper_figures_8cm")
 dir.create(FINAL_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # 図-11の8cm版と同じ文字サイズに統一
