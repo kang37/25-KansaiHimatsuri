@@ -59,7 +59,7 @@ save_paper <- function(p, name, width, height, dpi = 600) {
 }
 
 # ==============================================================================
-# 図-1 = 01_profile_age_and_resources
+# 図-2 = 01_profile_age_and_resources
 # ------------------------------------------------------------------------------
 # 【2026-09-12改訂】左パネル（協力者年齢）を削除し、右パネル（資源数）のみ
 # を残す。祭り名を表示し、文字を拡大、全体の高さを縮小する。
@@ -107,7 +107,7 @@ save_paper(p01b_s, "図-1_01_profile_age_and_resources_8cm.png",
            width = max(9, length(festival_order) * 0.30), height = 4.2, dpi = 900)
 
 # ==============================================================================
-# 図-2 = 03a_plant_prevalence_weighted
+# 図-1 = 03a_plant_prevalence_weighted
 # ==============================================================================
 
 # 図-2は再度の拡大要望があったため、共通サイズ（pth）よりさらに一回り大きくする
@@ -461,7 +461,7 @@ save_paper(p03b_s, "図-6_03b_plant_prevalence_by_pref_8cm.png",
            width = w8, height = 6.8, dpi = 900)
 
 # ==============================================================================
-# 図-7 = 23c_method_type_by_plant
+# 図-6 = 23c_method_type_by_plant
 # ==============================================================================
 
 p23c_paper <- p23c + noti + pth +
@@ -495,7 +495,7 @@ save_paper(p23c_s, "図-7_23c_method_type_by_plant_8cm.png",
            width = w8, height = 3.3, dpi = 900)
 
 # ==============================================================================
-# 図-8 = 28_procurement_change_by_plant
+# 図-7 = 28_procurement_change_by_plant
 # ==============================================================================
 
 # 【2026-09-11改訂】並びを「変化が大きい順」からTAXON_ORDER（生活形）順に
@@ -566,7 +566,7 @@ save_paper(p29_paper, "図-9_29_plant_x_method_x_change.png",
 # 変化）とその軸ラベルが判読不能になる。9.0inを維持する。
 
 # ==============================================================================
-# 図-10 = 24a_plant_x_landscape
+# その他図-1 = 24a_plant_x_landscape（914本文用原稿では未引用のため8図の通し番号から外す）
 # ==============================================================================
 
 # 【2026-09-11改訂】着色を「件数」から「その植物を使う祭りのうち、その
@@ -620,7 +620,7 @@ save_paper(p24a_s, "図-10_24a_plant_x_landscape_8cm.png",
            width = w8, height = 4.5, dpi = 900)
 
 # ==============================================================================
-# 図-11 = 28b_procurement_change_by_landscape
+# 図-8 = 28b_procurement_change_by_landscape
 # ==============================================================================
 
 # 【2026-09-11改訂】並びを「変化が大きい順」から、図24aと同じ「景観タイプの
@@ -668,7 +668,7 @@ save_paper(p28b_s, "図-11_28b_procurement_change_by_landscape_8cm.png",
            width = w8, height = 1.9, dpi = 900)
 
 # ==============================================================================
-# 図-12 = 27a_topic_x_management
+# その他図-2 = 27a_topic_x_management（914本文用原稿では未引用のため8図の通し番号から外す）
 # ==============================================================================
 
 # 【2026-09-13改訂】項目名を短縮したため折り返しが不要になった
@@ -722,7 +722,7 @@ cat("\n=== 論文用図表", length(list.files(PAPER_DIR, pattern = "\\.png$")),
 if (!exists("FINAL_DIR")) FINAL_DIR <- file.path(OUTPUT_DIR, "paper_figures_8cm")
 dir.create(FINAL_DIR, showWarnings = FALSE, recursive = TRUE)
 
-# 図-11の8cm版と同じ文字サイズに統一
+# 図-8（旧・図-11）の8cm版と同じ文字サイズに統一
 F_AX_TEXT  <- 4.6
 F_AX_TITLE <- 5.0
 F_LG_TEXT  <- 4.2
@@ -769,7 +769,7 @@ save_final <- function(p, name, width, height, dpi = 900) {
   cat("final saved:", name, sprintf("(%.2f x %.2f in)\n", width, height))
 }
 
-# ---- 図-1（8cm版、非ヒートマップ）文字をさらに拡大。1パネルのみに
+# ---- 図-2（8cm版、非ヒートマップ）文字をさらに拡大。1パネルのみに
 #      なったため高さを大幅に縮小する ----
 # 【2026-09-13改訂】横版のため8cm幅の制約から外れ、他の横幅図（図-3・
 # 図-4等）と同様に必要な幅を確保する。文字サイズも少し拡大する。
@@ -780,12 +780,12 @@ p01_final <- p01b_paper +
         strip.text = element_text(size = 14.0),
         legend.text = element_text(size = 14.0),
         legend.title = element_text(size = 14.0))
-save_final(p01_final, "図-1_01_profile_age_and_resources.png",
+save_final(p01_final, "図-2_01_profile_age_and_resources.png",
            width = max(11, length(festival_order) * 0.36), height = 4.2)
 
-# ---- 図-2（8cm版、非ヒートマップ）----
+# ---- 図-1（8cm版、非ヒートマップ）----
 p02_final <- p03a_paper_s + final_text_theme
-save_final(p02_final, "図-2_03a_plant_prevalence_weighted.png",
+save_final(p02_final, "図-1_03a_plant_prevalence_weighted.png",
            width = w8, height = 3.4)
 
 # ---- 図-3（8cm不可、幅を拡大。非ヒートマップ＝散布バブル図）----
@@ -879,16 +879,16 @@ p06_final <- recolor_tiles(p03b_s) + heat_frame_theme +
 save_final(p06_final, "図-6_03b_plant_prevalence_by_pref.png",
            width = w8, height = 6.8)
 
-# ---- 図-7（8cm版、非ヒートマップ）----
+# ---- 図-6（8cm版、非ヒートマップ）----
 p07_final <- p23c_s + final_text_theme
-save_final(p07_final, "図-7_23c_method_type_by_plant.png",
+save_final(p07_final, "図-6_23c_method_type_by_plant.png",
            width = w8, height = 3.3)
 
-# ---- 図-8（8cm版、非ヒートマップ）「吉祥草」（TAXON_ORDER外の1件のみの
+# ---- 図-7（8cm版、非ヒートマップ）「吉祥草」（TAXON_ORDER外の1件のみの
 #      記録で、他図には登場しない）を除外 ----
 p08_final <- p28_s + final_text_theme
 p08_final$data <- p08_final$data %>% filter(resource_taxon != "吉祥草")
-save_final(p08_final, "図-8_28_procurement_change_by_plant.png",
+save_final(p08_final, "図-7_28_procurement_change_by_plant.png",
            width = w8, height = 3.4)
 
 # ---- 図-9（8cm不可、元の幅のまま。ヒートマップ）----
@@ -918,7 +918,7 @@ p09_final <- ggplot(mat_29_complete, aes(x = change_cat, y = resource_taxon, fil
 save_final(p09_final, "図-9_29_plant_x_method_x_change.png",
            width = 9.0, height = max(6, length(taxon_order_29) * 0.19))
 
-# ---- 図-10（8cm版、ヒートマップ）文字を拡大 + 図-6と同じく
+# ---- その他図-1（8cm版、ヒートマップ）文字を拡大 + 図-6と同じく
 #      値がないセルにも罫線を表示（行×列を完全展開）----
 mat_24a_complete <- landscape_records %>%
   distinct(festival, resource_taxon, landscape_type) %>%
@@ -950,15 +950,15 @@ p10_final <- ggplot(mat_24a_complete, aes(x = landscape_type, y = resource_taxon
         legend.title = element_text(size = 6.5, lineheight = 0.9))
 # 【注】文字拡大により軸ラベルが幅を取るため、9列のタイル部分を確保する
 # には8cm(w8)では足りない。字が重ならない最低限としてやや幅を広げる。
-save_final(p10_final, "図-10_24a_plant_x_landscape.png",
+save_final(p10_final, "その他図-1_24a_plant_x_landscape.png",
            width = 3.7, height = 4.8)
 
-# ---- 図-11（8cm版、非ヒートマップ。文字サイズの基準そのもの）----
+# ---- 図-8（8cm版、非ヒートマップ。文字サイズの基準そのもの）----
 p11_final <- p28b_s + final_text_theme
-save_final(p11_final, "図-11_28b_procurement_change_by_landscape.png",
+save_final(p11_final, "図-8_28b_procurement_change_by_landscape.png",
            width = w8, height = 1.9)
 
-# ---- 図-12（8cm版、ヒートマップ）高さを低くする ----
+# ---- その他図-2（8cm版、ヒートマップ）高さを低くする ----
 # 【2026-09-13改訂】final_text_theme（他図と共通の8cm縮小サイズ）に対して、
 # 軸文字は2倍に拡大、逆に凡例は縮小する。
 # 【2026-09-13改訂】p27a_s（axis.title等を既に一度上書き済み）の上にさらに
@@ -976,7 +976,7 @@ p12_final <- recolor_tiles(p27a_final_base) + heat_frame_theme +
   guides(fill = guide_colorbar(barwidth = unit(10, "pt"), barheight = unit(75, "pt"))) +
   theme(legend.text = element_text(size = F_AX_TEXT * 2),
         legend.title = element_text(size = F_AX_TITLE * 2))
-save_final(p12_final, "図-12_27a_topic_x_management.png",
+save_final(p12_final, "その他図-2_27a_topic_x_management.png",
            width = w8, height = 2.0)
 
 cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$")), "枚を",
@@ -985,10 +985,11 @@ cat("\n=== 最終統合図表", length(list.files(FINAL_DIR, pattern = "\\.png$"
 # ==============================================================================
 # 図に対応する数値データのCSV書き出し（2026-09-13追加）
 # ------------------------------------------------------------------------------
-# 図-1・2・3・7・8・10・11について、図に描画した数値をそのままCSVで出力する。
-# ヒートマップ・積み上げ棒グラフ系（3・7・8・10・11）は図と同じ縦横（行＝植物
-# または景観、列＝カテゴリー）のワイド形式に、図-1・2は図の構造に沿った表に
-# する。パーセントは図中と同じ丸め方（小数第1位）の数値（0-100）で表す。
+# 図-1・2・3・6・7・8とその他図-1について、図に描画した数値をそのままCSVで
+# 出力する。ヒートマップ・積み上げ棒グラフ系（3・6・7・8・その他図-1）は図と
+# 同じ縦横（行＝植物または景観、列＝カテゴリー）のワイド形式に、図-1・2は
+# 図の構造に沿った表にする。パーセントは図中と同じ丸め方（小数第1位）の
+# 数値（0-100）で表す。
 # ==============================================================================
 
 export_table <- function(df, filename) {
@@ -997,13 +998,13 @@ export_table <- function(df, filename) {
   cat("exported:", filename, "\n")
 }
 
-# 図-1: 祭りごとの植物種類数
+# 図-2: 祭りごとの植物種類数
 tbl01 <- festival_profile %>%
   transmute(祭り = as.character(festival), 府県 = as.character(pref),
             植物種類数 = n_resources)
-export_table(tbl01, "図-1_data.csv")
+export_table(tbl01, "図-2_data.csv")
 
-# 図-2: 植物ごとの利用頻度（左）と日常利用内訳（右、%）
+# 図-1: 植物ごとの利用頻度（左）と日常利用内訳（右、%）
 tbl02_prev <- prev_plot %>%
   transmute(植物 = as.character(taxon), 使用火祭り数 = raw_n,
             使用する火祭りの割合 = round(raw_prev * 100, 1))
@@ -1012,7 +1013,7 @@ tbl02_daily <- daily_share_03_pp %>%
   pivot_wider(id_cols = resource_taxon, names_from = daily_label, values_from = pct)
 tbl02 <- tbl02_prev %>%
   left_join(tbl02_daily, by = c("植物" = "resource_taxon"))
-export_table(tbl02, "図-2_data.csv")
+export_table(tbl02, "図-1_data.csv")
 
 # 図-3: 植物×使用部位（その植物の部位記録に占める割合、%）
 tbl03 <- mat_19d %>%
@@ -1022,35 +1023,35 @@ tbl03 <- mat_19d %>%
   rename(植物 = resource_taxon, 部位記録数 = n_taxon)
 export_table(tbl03, "図-3_data.csv")
 
-# 図-7: 植物×調達方式（%）
+# 図-6: 植物×調達方式（%）
 tbl07 <- method_type_long %>%
   mutate(resource_taxon = as.character(resource_taxon), method_type = as.character(method_type),
          pct = round(pct * 100, 1)) %>%
   pivot_wider(id_cols = c(resource_taxon, n_total), names_from = method_type, values_from = pct) %>%
   rename(植物 = resource_taxon, 記録数 = n_total)
-export_table(tbl07, "図-7_data.csv")
+export_table(tbl07, "図-6_data.csv")
 
-# 図-8: 植物×調達地の変化（%）
+# 図-7: 植物×調達地の変化（%）
 tbl08 <- change_summary_pp %>%
   mutate(resource_taxon = as.character(resource_taxon), change_cat = as.character(change_cat),
          pct = round(pct * 100, 1)) %>%
   pivot_wider(id_cols = c(resource_taxon, n_rec), names_from = change_cat, values_from = pct) %>%
   rename(植物 = resource_taxon, 記録数 = n_rec)
-export_table(tbl08, "図-8_data.csv")
+export_table(tbl08, "図-7_data.csv")
 
-# 図-10: 植物×調達地の景観（その植物を使う祭りのうちその景観に由来する割合、%）
+# その他図-1: 植物×調達地の景観（その植物を使う祭りのうちその景観に由来する割合、%）
 tbl10 <- mat_24a_complete %>%
   mutate(resource_taxon = as.character(resource_taxon), landscape_type = as.character(landscape_type),
          pct = round(pct * 100, 1)) %>%
   pivot_wider(id_cols = c(resource_taxon, n_taxon_fest), names_from = landscape_type, values_from = pct) %>%
   rename(植物 = resource_taxon, 使用祭り数 = n_taxon_fest)
-export_table(tbl10, "図-10_data.csv")
+export_table(tbl10, "その他図-1_data.csv")
 
-# 図-11: 生態景観類型×調達地の変化（%）
+# 図-8: 生態景観類型×調達地の変化（%）
 tbl11 <- landscape_change_summary_pp %>%
   mutate(landscape_type = as.character(landscape_type), change_cat = as.character(change_cat),
          pct = round(pct * 100, 1)) %>%
   pivot_wider(id_cols = c(landscape_type, n_rec), names_from = change_cat, values_from = pct) %>%
   rename(景観類型 = landscape_type, 記録数 = n_rec)
-export_table(tbl11, "図-11_data.csv")
+export_table(tbl11, "図-8_data.csv")
 
