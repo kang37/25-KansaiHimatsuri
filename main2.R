@@ -674,17 +674,21 @@ if (USE_RAW_DATA_AGG) {
 
   # --- raw_data_agg.xlsx（結果1・2・4・5を統合済みの資源レコード表）---
   agg_raw <- suppressMessages(read_excel(RAW_AGG_PATH, sheet = 1, col_names = TRUE))
-  stopifnot(ncol(agg_raw) == 19)
+  # 【2026-09-14改訂】「部位・材料名」列（値は"部位"/"材料名"）が結果1の3列目に
+  # 追加され、19列→20列になった。図19d（植物×使用部位）で部位/材料名を
+  # 分けて表示する際、この列を正とする（従来のハードコードした判定リストは
+  # 廃止）。
+  stopifnot(ncol(agg_raw) == 20)
   names(agg_raw) <- c(
-    "festival", "taxon_kind", "part", "daily_class", "daily_note",
+    "festival", "taxon_kind", "part_category", "part", "daily_class", "daily_note",
     "current_use", "in_scope", "use_class", "use_note", "reason_raw",
     "subst_class", "subst_note", "method_class", "method_note", "timing_raw",
     "change_class", "change_note", "landscape_raw", "landscape_note"
   )
 
   resource_raw <- agg_raw %>%
-    mutate(across(c(festival, taxon_kind, part, daily_class, use_class, reason_raw,
-                    subst_class, method_class, change_class, landscape_raw),
+    mutate(across(c(festival, taxon_kind, part, part_category, daily_class, use_class,
+                    reason_raw, subst_class, method_class, change_class, landscape_raw),
                   matome_clean),
            taxon_kind    = ifelse(taxon_kind %in% names(TAXON_RENAME_AGG),
                                   unname(TAXON_RENAME_AGG[taxon_kind]), taxon_kind),
@@ -693,7 +697,7 @@ if (USE_RAW_DATA_AGG) {
            in_scope      = suppressWarnings(as.integer(in_scope)),
            taxon_matome  = NA_character_) %>%
     filter(in_scope == 1) %>%
-    select(festival, taxon_kind, part, method_class, method_note, timing_raw,
+    select(festival, taxon_kind, part, part_category, method_class, method_note, timing_raw,
            resource_orig, daily_class, daily_note, current_use,
            use_class, use_note, reason_raw, subst_class, subst_note,
            change_class, change_note, landscape_raw, taxon_matome)
@@ -718,6 +722,15 @@ if (USE_RAW_DATA_AGG) {
               by = c("festival", "resource_orig")) %>%
     select(-join_part)
 
+}
+
+# 【2026-09-14追加】USE_RAW_DATA_AGGを使わない従来経路には「部位・材料名」
+# 列（part_category）が存在しないため、図19d用に簡易ヒューリスティックで
+# 代用する（raw_data_agg.xlsx側は結果1の実データ列をそのまま使うので対象外）。
+if (!"part_category" %in% names(resource_raw)) {
+  PART_BODY_SET_FALLBACK <- c("根", "枝", "葉", "花", "稈", "地上部", "ツル")
+  resource_raw <- resource_raw %>%
+    mutate(part_category = ifelse(part %in% PART_BODY_SET_FALLBACK, "部位", "材料名"))
 }
 
 .unmapped_use <- resource_raw %>% filter(is.na(use_class))
@@ -2303,13 +2316,13 @@ part_df <- resource_df %>%
 
 # 行に使う植物リストはresource_df全体（「全体/NA」を含めるため全レコードが対象）。
 part_taxon_order <- levels(order_taxon(resource_df$resource_taxon))
-# 【2026-09-13改訂】列を「部位」（植物の解剖学的な部分）と「材料名」
+# 【2026-09-14改訂】列を「部位」（植物の解剖学的な部分）と「材料名」
 # （収穫・加工後の製品としての呼び名）の2グループに分け、部位を左側、
-# 材料名を右側に配置する（各グループ内は出現頻度順）。
-PART_BODY_SET <- c("根", "枝", "葉", "花", "稈", "地上部", "ツル", "全体/NA")
-part_order_body     <- part_df %>% filter(part %in% PART_BODY_SET) %>%
+# 材料名を右側に配置する（各グループ内は出現頻度順）。結果1に追加された
+# 「部位・材料名」列（part_category）を正とする（旧・ハードコード判定は廃止）。
+part_order_body     <- part_df %>% filter(part_category == "部位") %>%
   count(part, sort = TRUE) %>% pull(part)
-part_order_material <- part_df %>% filter(!part %in% PART_BODY_SET) %>%
+part_order_material <- part_df %>% filter(part_category == "材料名") %>%
   count(part, sort = TRUE) %>% pull(part)
 part_order <- c(part_order_body, part_order_material)
 

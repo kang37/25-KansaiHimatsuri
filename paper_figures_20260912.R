@@ -19,6 +19,10 @@
 USE_RAW_DATA_AGG <- TRUE
 PAPER_DIR <- "data_proc/20260912_scratch"
 FINAL_DIR <- "data_proc/paper_20260912"
+# 【2026-09-14改訂】PNG・CSVはFINAL_DIRに、SVGは別フォルダ（SVG_DIR）に
+# 分けて保存する（save_final()がSVG_DIRの有無を見て書き出し先を切り替える）。
+SVG_DIR  <- "data_proc/paper_20260912_svg"
+dir.create(SVG_DIR, showWarnings = FALSE, recursive = TRUE)
 
 source("paper_figures.R")
 
@@ -26,15 +30,15 @@ source("paper_figures.R")
 #     変わらないが、2026-09-13にラベル文言・フォントサイズを見直したため
 #     もうコピーせず、paper_figures.R内で（同じデータのまま）都度描き直す。 ---
 
-# --- 図6・図9：今回は不要（PNG・SVGとも削除） ---
+# --- 図6・図9：今回は不要（FINAL_DIR・SVG_DIRとも削除） ---
 for (base in c("図-6_03b_plant_prevalence_by_pref",
                "図-9_29_plant_x_method_x_change")) {
-  for (ext in c(".png", ".svg")) {
-    p <- file.path(FINAL_DIR, paste0(base, ext))
+  for (p in c(file.path(FINAL_DIR, paste0(base, ".png")),
+              file.path(SVG_DIR, paste0(base, ".svg")))) {
     if (file.exists(p)) { file.remove(p); cat("removed (not needed):", basename(p), "\n") }
   }
 }
 
 cat("\n=== paper_20260912 完了:", length(list.files(FINAL_DIR, pattern = "\\.png$")),
-    "枚 ===\n")
+    "枚（PNG/CSV:", FINAL_DIR, "、SVG:", SVG_DIR, "） ===\n")
 print(sort(list.files(FINAL_DIR, pattern = "\\.png$")))

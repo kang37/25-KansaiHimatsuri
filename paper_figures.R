@@ -754,8 +754,11 @@ save_final <- function(p, name, width, height, dpi = 900) {
   )
   status <- system2("python3", args = c("-c", shQuote(py)))
   if (status != 0) warning("DPI埋め込みに失敗しました: ", name)
-  # 【2026-09-13追加】PNGと同じ寸法でSVG版も書き出す
-  svg_path <- sub("\\.png$", ".svg", path)
+  # 【2026-09-13追加、2026-09-14改訂】PNGと同じ寸法でSVG版も書き出す。
+  # SVG_DIRが定義されていればPNG（FINAL_DIR）とは別フォルダに保存する
+  # （未定義の場合はFINAL_DIRに書き出す＝従来通りの互換動作）。
+  svg_dir <- if (exists("SVG_DIR")) SVG_DIR else FINAL_DIR
+  svg_path <- file.path(svg_dir, sub("\\.png$", ".svg", name))
   ggsave(svg_path, p, width = width, height = height, limitsize = FALSE)
   cat("final saved:", name, sprintf("(%.2f x %.2f in)\n", width, height))
 }
