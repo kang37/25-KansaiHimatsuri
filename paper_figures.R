@@ -149,7 +149,8 @@ daily_share_03_pp <- daily_share_03 %>%
                               levels = daily_label_nonum))
 
 p03a_daily_paper <- ggplot(daily_share_03_pp, aes(x = pct, y = resource_taxon, fill = daily_label)) +
-  geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
+  # 【2026-09-14改訂】積み上げ順を凡例の並び順と一致させる（reverse=TRUE）。
+  geom_col(position = position_stack(reverse = TRUE), width = 0.72, na.rm = TRUE) +
   scale_fill_manual(values = daily_colors_nonum, name = "日常利用", drop = FALSE) +
   scale_x_continuous(labels = scales::percent,
                       expand = expansion(mult = c(0, 0))) +
@@ -158,7 +159,8 @@ p03a_daily_paper <- ggplot(daily_share_03_pp, aes(x = pct, y = resource_taxon, f
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
         panel.grid.major.y = element_blank(),
         plot.margin = margin(3, 8, 3, 10),
-        axis.text.x = element_text(size = AX_TEXT_2)) +
+        axis.text.x = element_text(size = AX_TEXT_2),
+        panel.border = element_rect(linewidth = 0.3)) +
   pth
 
 # 凡例（legend.text/legend.title）も拡大

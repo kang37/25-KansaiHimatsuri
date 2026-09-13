@@ -1095,7 +1095,11 @@ daily_share_03 <- resource_df %>%
   ungroup() %>%
   mutate(pct = ifelse(is.nan(pct), NA_real_, pct),
          resource_taxon = factor(resource_taxon, levels = levels(prev_plot$taxon)),
-         daily_label = factor(daily_label, levels = daily_label_lv))
+         daily_label = factor(daily_label, levels = daily_label_lv)) %>%
+  # 【2026-09-14改訂】complete()で失われるfactorの並び順を明示的に
+  # 再度並べ替える（行の物理的な並びがposition_stackの積み上げ順を
+  # 左右するため、factorの水準を設定し直すだけでは不十分）。
+  arrange(resource_taxon, daily_label)
 
 p03a_main <- ggplot(prev_plot, aes(y = taxon)) +
   geom_segment(aes(x = 0, xend = raw_prev, y = taxon, yend = taxon),
