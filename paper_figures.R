@@ -637,10 +637,12 @@ p28b_paper <- ggplot(landscape_change_summary_pp, aes(x = land_label, y = pct, f
   # 【2026-09-13改訂】積み上げ順を凡例の並び順と一致させる（reverse=TRUE）。
   geom_col(position = position_stack(reverse = TRUE), width = 0.7) +
   coord_flip() +
-  scale_fill_manual(values = CHANGE_PAL, name = "調達地の変化", drop = FALSE) +
+  scale_fill_manual(values = CHANGE_PAL, name = "調達地の状況", drop = FALSE,
+                     labels = c("以前より近い" = "以前より近い範囲",
+                                "以前より広い" = "以前より広い範囲")) +
   scale_x_discrete(labels = function(x) sub("件）", "）", x)) +
   scale_y_continuous(labels = scales::percent) +
-  labs(x = NULL, y = "調達地の割合") +
+  labs(x = NULL, y = "割合") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank()) +
   pth + theme(legend.position = "bottom") +
