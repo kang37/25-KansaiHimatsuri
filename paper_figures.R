@@ -62,31 +62,14 @@ save_paper <- function(p, name, width, height, dpi = 600) {
 # 図-1 = 01_profile_age_and_resources
 # ------------------------------------------------------------------------------
 # 【2026-09-12改訂】左パネル（協力者年齢）を削除し、右パネル（資源数）のみ
-# を残す。祭り名を表示し、文字を拡大、全体の高さを縮小する。カウント基準を
-# 2種類併記する：
-#   ・植物口径＝祭り×植物分類群のユニーク数（従来のn_resources、濃灰）
-#   ・資源口径＝祭り×植物×使用部位のレコード数（resource_dfの行数、灰）
+# を残す。祭り名を表示し、文字を拡大、全体の高さを縮小する。
+# 【2026-09-13改訂】資源口径（n_records）のバーを削除し、植物口径
+# （n_resources＝祭り×植物分類群のユニーク数）のみを表示する。縦軸（件数）
+# は小数点なしの整数目盛（0・5・10…）にする。
 # ==============================================================================
 
-resource_count_records <- resource_df %>%
-  count(festival, name = "n_records")
+count_max_01 <- max(festival_profile$n_resources, na.rm = TRUE)
 
-BASIS_LEVELS <- c("植物種類数", "資源種類数")
-BASIS_PAL <- setNames(c("gray35", "gray75"), BASIS_LEVELS)
-
-# 【デザイン方針】資源口径（n_records）は植物口径（n_resources）以上に
-# なる（同一祭り内で同じ植物の複数部位が記録される場合のみ差が出る）ため、
-# 縦に並べる（dodge）のではなく、太い灰色バー（資源口径）の上に細い濃灰色
-# バー（植物口径）を重ねる「バレットチャート」方式にする。dodgeだと30祭り
-# 分の行高が低いため2本のバーが視覚的に潰れて重なり、ラベルも衝突する。
-resource_count_df <- festival_profile %>%
-  left_join(resource_count_records, by = "festival") %>%
-  mutate(n_records = replace_na(n_records, 0))
-
-count_max_01 <- max(resource_count_df$n_records, resource_count_df$n_resources, na.rm = TRUE)
-
-# 【2026-09-12改訂】バー上のn/n数値ラベルを削除（データはバーの長さと
-# 凡例の色だけで示す）。
 # 【2026-09-13改訂】横版（反時計回りに90度回転したレイアウト）に変更。
 # 祭りを横軸、件数を縦軸にし、府県ごとの帯を左右に並べる
 # （facet_grid(pref~.)→facet_grid(.~pref)、free_y→free_x）。
@@ -96,12 +79,11 @@ AX_TEXT_S1 <- 6.0
 
 facet_pref_h <- facet_grid(. ~ pref, scales = "free_x", space = "free_x")
 
-p01b_paper <- ggplot(resource_count_df, aes(x = festival)) +
-  geom_col(aes(y = n_records, fill = BASIS_LEVELS[2]), width = 0.68, na.rm = TRUE) +
-  geom_col(aes(y = n_resources, fill = BASIS_LEVELS[1]), width = 0.32, na.rm = TRUE) +
+p01b_paper <- ggplot(festival_profile, aes(x = festival, y = n_resources)) +
+  geom_col(fill = "gray35", width = 0.6, na.rm = TRUE) +
   facet_pref_h +
-  scale_fill_manual(values = BASIS_PAL, name = NULL, breaks = BASIS_LEVELS) +
-  scale_y_continuous(limits = c(0, count_max_01 * 1.05), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, count_max_01 * 1.05), expand = c(0, 0),
+                      breaks = scales::breaks_width(5)) +
   labs(x = NULL, y = "件数") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.x = element_blank(),
@@ -257,7 +239,7 @@ p19d_paper <- p19d + noti + pth +
         legend.position = "bottom") +
   guides(size = guide_legend(nrow = 1, title.position = "left")) +
   scale_size_area(max_size = 6, labels = scales::percent,
-                   name = "資源の割合") +
+                   name = "部位と材料名の割合") +
   scale_y_discrete(drop = FALSE, expand = expansion(add = c(0.6, 1.0)))
 # 百分比ラベル（layers[[2]]）を削除。点を「黒縁・グレー塗り」に変更。
 p19d_paper$layers[[2]] <- NULL
@@ -396,6 +378,13 @@ subst_share_17b_pp <- resource_df %>%
   count(resource_taxon, subst_label) %>%
   complete(resource_taxon = taxon_denom$resource_taxon, subst_label = SUBST4,
            fill = list(n = 0)) %>%
+  # 【2026-09-13改訂】complete()はsubst_labelを文字列に戻してしまう
+  # （factorの水準情報が失われ、既存行の並びもそのまま残る）ため、
+  # 積み上げ順が凡例（SUBST4）の並びと一致しないことがある。factorを
+  # 明示的に再設定してから並べ替え、position_stack(reverse=TRUE)と
+  # 組み合わせる。
+  mutate(subst_label = factor(subst_label, levels = SUBST4)) %>%
+  arrange(resource_taxon, subst_label) %>%
   group_by(resource_taxon) %>%
   mutate(pct = n / sum(n)) %>%
   ungroup() %>%
@@ -404,7 +393,9 @@ subst_share_17b_pp <- resource_df %>%
   mutate(taxon_label = factor(paste0(resource_taxon, "（", n_fes, "）"), levels = rev(label_order_17b_num)))
 
 p17b_subst_paper <- ggplot(subst_share_17b_pp, aes(x = pct, y = taxon_label, fill = subst_label)) +
-  geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
+  # 【2026-09-13改訂】積み上げ順を凡例の並び順（SUBST4）と一致させる
+  # （デフォルトのstackだと逆順になるためreverse=TRUEにする）。
+  geom_col(position = position_stack(reverse = TRUE), width = 0.72, na.rm = TRUE) +
   scale_fill_manual(values = SUBST4_PAL, name = "代替可能性", drop = FALSE,
                      guide = guide_legend(nrow = 1, title.position = "left")) +
   scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
@@ -472,7 +463,7 @@ p23c_paper <- p23c + noti + pth +
   scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式", drop = FALSE,
                      labels = function(x) sub("^[①②③④⑤]\\s*", "", x)) +
   scale_x_discrete(labels = function(x) sub("n=", "", x)) +
-  labs(y = "調達方式の割合") +
+  labs(y = "割合") +
   guides(fill = guide_legend(nrow = 1))
 # 【注】件数は行ラベル（taxon_label）に埋め込み済みなので専用のgeom_textはない。
 # 凡例から番号を外して短くしたので1行に収まる。
@@ -511,13 +502,21 @@ change_summary_pp <- change_summary %>%
   mutate(taxon_label = factor(paste0(resource_taxon, "（", n_rec, "件）"),
                               levels = p28_label_levels))
 
+# 【2026-09-13改訂】凡例名を「調達地の状況」に、「以前より近い／広い」を
+# 「以前より近い範囲／広い範囲」に変更（図-8のみ。表示名だけの変更で
+# change_cat自体のコード値は変えない）。積み上げ順を凡例の並び順と
+# 一致させる（reverse=TRUE）。
+CHANGE_LABELS_08 <- c("以前より近い" = "以前より近い範囲", "以前より広い" = "以前より広い範囲")
+
 p28_paper <- ggplot(change_summary_pp, aes(x = taxon_label, y = pct, fill = change_cat)) +
-  geom_col(width = 0.7) +
+  geom_col(position = position_stack(reverse = TRUE), width = 0.7) +
   coord_flip() +
-  scale_fill_manual(values = CHANGE_PAL, name = "調達地の変化", drop = FALSE) +
+  scale_fill_manual(values = CHANGE_PAL, name = "調達地の状況", drop = FALSE,
+                     labels = function(x) ifelse(x %in% names(CHANGE_LABELS_08),
+                                                  CHANGE_LABELS_08[x], x)) +
   scale_x_discrete(labels = function(x) sub("件）", "）", x)) +
   scale_y_continuous(labels = scales::percent) +
-  labs(x = NULL, y = "調達地変化の割合") +
+  labs(x = NULL, y = "割合") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank()) +
   pth + theme(legend.position = "bottom") +
@@ -629,7 +628,8 @@ landscape_change_summary_pp <- landscape_change_summary %>%
                              levels = landscape_label_levels))
 
 p28b_paper <- ggplot(landscape_change_summary_pp, aes(x = land_label, y = pct, fill = change_cat)) +
-  geom_col(width = 0.7) +
+  # 【2026-09-13改訂】積み上げ順を凡例の並び順と一致させる（reverse=TRUE）。
+  geom_col(position = position_stack(reverse = TRUE), width = 0.7) +
   coord_flip() +
   scale_fill_manual(values = CHANGE_PAL, name = "調達地の変化", drop = FALSE) +
   scale_x_discrete(labels = function(x) sub("件）", "）", x)) +
@@ -752,6 +752,9 @@ save_final <- function(p, name, width, height, dpi = 900) {
   )
   status <- system2("python3", args = c("-c", shQuote(py)))
   if (status != 0) warning("DPI埋め込みに失敗しました: ", name)
+  # 【2026-09-13追加】PNGと同じ寸法でSVG版も書き出す
+  svg_path <- sub("\\.png$", ".svg", path)
+  ggsave(svg_path, p, width = width, height = height, limitsize = FALSE)
   cat("final saved:", name, sprintf("(%.2f x %.2f in)\n", width, height))
 }
 
@@ -826,7 +829,7 @@ p04_final <- ggplot(mat_19c_complete, aes(x = use_cat, y = resource_taxon,
         legend.text = element_text(size = F4_LG_TEXT),
         legend.title = element_text(size = F4_LG_TITLE),
         legend.box.spacing = unit(4, "pt"),
-        plot.margin = margin(18, 5.5, 5.5, 5.5))
+        plot.margin = margin(26, 5.5, 5.5, 5.5))
 save_final(p04_final, "図-4_19c_plant_x_use.png",
            width = 8.2, height = max(6, n_distinct(mat_19c$resource_taxon) * 0.20))
 
@@ -983,10 +986,10 @@ export_table <- function(df, filename) {
   cat("exported:", filename, "\n")
 }
 
-# 図-1: 祭りごとの植物種類数・資源種類数
-tbl01 <- resource_count_df %>%
+# 図-1: 祭りごとの植物種類数
+tbl01 <- festival_profile %>%
   transmute(祭り = as.character(festival), 府県 = as.character(pref),
-            植物種類数 = n_resources, 資源種類数 = n_records)
+            植物種類数 = n_resources)
 export_table(tbl01, "図-1_data.csv")
 
 # 図-2: 植物ごとの利用頻度（左）と日常利用内訳（右、%）

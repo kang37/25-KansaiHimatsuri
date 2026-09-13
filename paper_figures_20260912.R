@@ -26,11 +26,13 @@ source("paper_figures.R")
 #     変わらないが、2026-09-13にラベル文言・フォントサイズを見直したため
 #     もうコピーせず、paper_figures.R内で（同じデータのまま）都度描き直す。 ---
 
-# --- 図6・図9：今回は不要 ---
-for (f in c("図-6_03b_plant_prevalence_by_pref.png",
-            "図-9_29_plant_x_method_x_change.png")) {
-  p <- file.path(FINAL_DIR, f)
-  if (file.exists(p)) { file.remove(p); cat("removed (not needed):", f, "\n") }
+# --- 図6・図9：今回は不要（PNG・SVGとも削除） ---
+for (base in c("図-6_03b_plant_prevalence_by_pref",
+               "図-9_29_plant_x_method_x_change")) {
+  for (ext in c(".png", ".svg")) {
+    p <- file.path(FINAL_DIR, paste0(base, ext))
+    if (file.exists(p)) { file.remove(p); cat("removed (not needed):", basename(p), "\n") }
+  }
 }
 
 cat("\n=== paper_20260912 完了:", length(list.files(FINAL_DIR, pattern = "\\.png$")),
