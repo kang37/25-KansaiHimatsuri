@@ -141,10 +141,11 @@ taxon_n_lookup_02 <- setNames(as.character(prev_plot$raw_n), as.character(prev_p
 p03a_main_paper <- p03a_main + noti + pth +
   theme(plot.margin = margin(14, 10, 3, 55), axis.ticks.y = element_blank(),
         axis.text = element_text(size = AX_TEXT_2),
-        axis.title = element_text(size = AX_TITLE_2)) +
+        axis.title = element_text(size = AX_TITLE_2),
+        panel.border = element_rect(linewidth = 0.3)) +
   labs(x = "使用する火祭りの割合") +
   scale_x_continuous(labels = scales::percent, limits = c(0, 0.70),
-                      expand = expansion(mult = c(0, 0.03))) +
+                      expand = expansion(mult = c(0, 0))) +
   scale_y_discrete(labels = function(x) paste0(x, "（", taxon_n_lookup_02[x], "）")) +
   # 【2026-09-13追加】図-4・図-5と同じ方式：annotate()でパネル座標系
   # （x=-Inf）に直接描画し、「植物（祭り数）」の右端と「割合（%）」の
@@ -169,7 +170,7 @@ p03a_daily_paper <- ggplot(daily_share_03_pp, aes(x = pct, y = resource_taxon, f
   geom_col(position = "stack", width = 0.72, na.rm = TRUE) +
   scale_fill_manual(values = daily_colors_nonum, name = "日常利用", drop = FALSE) +
   scale_x_continuous(labels = scales::percent,
-                      expand = expansion(mult = c(0, 0.06))) +
+                      expand = expansion(mult = c(0, 0))) +
   labs(x = "日常利用の割合", y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
