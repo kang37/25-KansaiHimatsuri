@@ -139,13 +139,21 @@ LG_TITLE_2 <- LG_TITLE + 2.2
 taxon_n_lookup_02 <- setNames(as.character(prev_plot$raw_n), as.character(prev_plot$taxon))
 
 p03a_main_paper <- p03a_main + noti + pth +
-  theme(plot.margin = margin(3, 10, 3, 3), axis.ticks.y = element_blank(),
+  theme(plot.margin = margin(14, 10, 3, 55), axis.ticks.y = element_blank(),
         axis.text = element_text(size = AX_TEXT_2),
         axis.title = element_text(size = AX_TITLE_2)) +
   labs(x = "使用する火祭りの割合") +
   scale_x_continuous(labels = scales::percent, limits = c(0, 0.70),
                       expand = expansion(mult = c(0, 0.03))) +
-  scale_y_discrete(labels = function(x) paste0(x, "（", taxon_n_lookup_02[x], "）"))
+  scale_y_discrete(labels = function(x) paste0(x, "（", taxon_n_lookup_02[x], "）")) +
+  # 【2026-09-13追加】図-4・図-5と同じ方式：annotate()でパネル座標系
+  # （x=-Inf）に直接描画し、「植物（祭り数）」の右端と「割合（%）」の
+  # 左端をパネルの左境界に揃える。
+  annotate("text", x = -Inf, y = Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
+           size = AX_TEXT_2 / 2.845, family = "HiraginoSans-W3") +
+  annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
+           size = AX_TEXT_2 / 2.845, family = "HiraginoSans-W3") +
+  coord_cartesian(clip = "off")
 # 棒棒糖の色を青からダークグレーへ
 p03a_main_paper$layers[[1]]$aes_params$colour <- "gray30"  # geom_segment
 p03a_main_paper$layers[[2]]$aes_params$colour <- "gray30"  # geom_point
@@ -200,10 +208,16 @@ LG_TITLE_S <- 4.6
 
 p03a_main_s <- p03a_main_paper +
   theme(axis.text = element_text(size = AX_TEXT_S),
-        axis.title = element_text(size = AX_TITLE_S))
+        axis.title = element_text(size = AX_TITLE_S),
+        # 印刷版（AX_TEXT_2基準）用に確保した左余白は、この縮小版の文字
+        # サイズには過大なので縮める。
+        plot.margin = margin(14, 10, 3, 24))
 # 棒棒糖の線・点を縮小（行間を詰めても図形同士がぶつからないように）
 p03a_main_s$layers[[1]]$aes_params$linewidth <- 0.4  # geom_segment
 p03a_main_s$layers[[2]]$aes_params$size      <- 1.4  # geom_point
+# 左上の注記（annotate、layers[[3]]・[[4]]）もこの版の文字サイズに合わせる
+p03a_main_s$layers[[3]]$aes_params$size <- AX_TEXT_S / 2.845
+p03a_main_s$layers[[4]]$aes_params$size <- AX_TEXT_S / 2.845
 
 p03a_daily_s <- p03a_daily_paper +
   theme(axis.text.x = element_text(size = AX_TEXT_S))
