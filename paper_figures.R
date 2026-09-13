@@ -128,7 +128,11 @@ p03a_main_paper <- p03a_main + noti + pth +
   labs(x = "使用する火祭りの割合") +
   scale_x_continuous(labels = scales::percent, limits = c(0, 0.70),
                       expand = expansion(mult = c(0, 0))) +
-  scale_y_discrete(labels = function(x) paste0(x, "（", taxon_n_lookup_02[x], "）")) +
+  # 【2026-09-14改訂】上端の余白（expand）を広げる。デフォルトのまま
+  # だと最上段（棒棒糖の横線）が外枠の上辺にほぼ接し、外枠が右図より
+  # 太く見える原因になっていたため、上側だけ広げて分離する。
+  scale_y_discrete(labels = function(x) paste0(x, "（", taxon_n_lookup_02[x], "）"),
+                    expand = expansion(add = c(0.6, 1.0))) +
   # 【2026-09-13追加】図-4・図-5と同じ方式：annotate()でパネル座標系
   # （x=-Inf）に直接描画し、「植物（祭り数）」の右端と「割合（%）」の
   # 左端をパネルの左境界に揃える。
