@@ -412,7 +412,7 @@ p17b_subst_paper <- ggplot(subst_share_17b_pp, aes(x = pct, y = taxon_label, fil
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
         panel.grid.major.y = element_blank()) +
-  pth + theme(plot.margin = margin(3, 5, 3, 10))
+  pth + theme(plot.margin = margin(3, 22, 3, 10))
 
 # 【2026-09-12改訂】左右2つの凡例（理由の割合＝連続グラデーション、
 # 代替可能性＝離散4区分）を1行に横並びで統合する。キーと文字の間の
@@ -468,7 +468,7 @@ save_paper(p03b_s, "図-6_03b_plant_prevalence_by_pref_8cm.png",
 # ==============================================================================
 
 p23c_paper <- p23c + noti + pth +
-  theme(legend.position = "bottom") +
+  theme(legend.position = "bottom", plot.margin = margin(3, 22, 3, 3)) +
   scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式", drop = FALSE,
                      labels = function(x) sub("^[①②③④⑤]\\s*", "", x)) +
   scale_x_discrete(labels = function(x) sub("n=", "", x)) +
