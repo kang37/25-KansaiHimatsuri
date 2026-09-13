@@ -349,7 +349,7 @@ reason_grid_res <- expand_grid(
 p17b_main_paper <- ggplot(reason_grid_res, aes(x = rlabel, y = taxon_label)) +
   geom_tile(aes(fill = ifelse(share > 0, share, NA)), color = "gray75", linewidth = 0.35) +
   geom_text(aes(label = ifelse(share > 0, scales::percent(share, accuracy = 1, suffix = ""), "")),
-            size = 2.9, family = "HiraginoSans-W3",
+            size = 2.9 * 1.2, family = "HiraginoSans-W3",
             color = ifelse(reason_grid_res$share > 0.5, "white", "gray20")) +
   scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
                       limits = c(0, 1), breaks = c(0, 0.5, 1),
@@ -361,9 +361,9 @@ p17b_main_paper <- ggplot(reason_grid_res, aes(x = rlabel, y = taxon_label)) +
   # 直接描画し、「植物（祭り数）」の右端と「割合（%）」の左端をタイル部分の
   # 左境界に正確に揃える（plot.title/plot.tagの近似配置はやめる）。
   annotate("text", x = -Inf, y = Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
-           size = AX_TEXT / 2.845, family = "HiraginoSans-W3") +
+           size = AX_TEXT * 1.2 / 2.845, family = "HiraginoSans-W3") +
   annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
-           size = AX_TEXT / 2.845, family = "HiraginoSans-W3") +
+           size = AX_TEXT * 1.2 / 2.845, family = "HiraginoSans-W3") +
   coord_cartesian(clip = "off") +
   labs(x = NULL, y = NULL) +
   theme_bw(base_family = "HiraginoSans-W3") +
@@ -794,10 +794,10 @@ mat_19c_complete <- use_long %>%
 # 図-4自身の幅（8.2in）に見合う大きさを別途定義する（現状比2倍）。
 # 図左上に分母の注記を追加し、plot.title.position="plot"でy軸ラベルの
 # 左端とおおよそ揃える。
-F4_AX_TEXT  <- F_AX_TEXT * 2
-F4_AX_TITLE <- F_AX_TITLE * 2
-F4_LG_TEXT  <- F_LG_TEXT * 2
-F4_LG_TITLE <- F_LG_TITLE * 2
+F4_AX_TEXT  <- F_AX_TEXT * 2 * 1.2
+F4_AX_TITLE <- F_AX_TITLE * 2 * 1.2
+F4_LG_TEXT  <- F_LG_TEXT * 2 * 1.2
+F4_LG_TITLE <- F_LG_TITLE * 2 * 1.2
 
 # 【2026-09-12改訂】「植物（祭り数）」と「割合（%）」を同じ行に、かつ
 # 前者の右端／後者の左端をタイル部分（パネル）の左境界に揃えるため、
@@ -809,7 +809,7 @@ p04_final <- ggplot(mat_19c_complete, aes(x = use_cat, y = resource_taxon,
                                            fill = ifelse(pct > 0, pct, NA))) +
   geom_tile(color = "black", linewidth = 0.15) +
   geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1, suffix = ""), "")),
-            size = 3.0, family = "HiraginoSans-W3",
+            size = 3.0 * 1.2, family = "HiraginoSans-W3",
             color = ifelse(mat_19c_complete$pct > 0.75, "white", "gray15")) +
   annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
            size = F4_AX_TEXT / 2.845, family = "HiraginoSans-W3") +
@@ -834,8 +834,8 @@ save_final(p04_final, "図-4_19c_plant_x_use.png",
 # 文字サイズをセル内の百分比（geom_textのsize=2.9mm≒8.3pt）に揃える。
 # 代替可能性の凡例は「代替品」を最後に固定表示（breaksを明示し、
 # position_stack由来の並び崩れを防ぐ）。凡例は1行に横並び統合。
-F5_TEXT  <- 8.3
-F5_TITLE <- 8.8
+F5_TEXT  <- 8.3 * 1.2
+F5_TITLE <- 8.8 * 1.2
 p17b_main_final <- recolor_tiles(p17b_main_paper) + heat_frame_theme +
   theme(axis.text = element_text(size = F5_TEXT),
         axis.title = element_text(size = F5_TITLE),
