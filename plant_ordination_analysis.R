@@ -415,7 +415,165 @@ ggsave(file.path(OUTPUT_DIR, "pca_by_pref.png"), p_pca, width = 10, height = 7.5
 write.csv(nmds_scores, file.path(OUTPUT_DIR, "nmds_scores_with_clusters.csv"),
           row.names = FALSE, fileEncoding = "UTF-8")
 
+# ==============================================================================
+# 11. 滋賀・京都・大阪の3府県のみでNMDS（凸包で囲む）
+# ------------------------------------------------------------------------------
+# 兵庫・奈良・和歌山は各3祭りしかなく、全体解析ではnが少ない府県の効果が
+# 見えにくい可能性がある。標本数が相対的に多い3府県（滋賀11・京都7・大阪3）
+# に絞り、Jaccard距離を作り直してNMDSを取り直す（全体のNMDS座標をそのまま
+# 使うと、除外した祭りとの距離関係が残ったままになるため、非類似度の計算
+# からやり直す必要がある）。
+# ==============================================================================
+
+convex_hull_df <- function(scores_df, x = "NMDS1", y = "NMDS2", group = "pref") {
+  scores_df %>%
+    group_by(.data[[group]]) %>%
+    filter(n() >= 3) %>%   # 凸包を描くには最低3点必要
+    slice(chull(.data[[x]], .data[[y]])) %>%
+    ungroup()
+}
+
+sub_pref <- c("滋賀県", "京都府", "大阪府")
+meta_sub <- meta %>% filter(pref %in% sub_pref)
+pa_sub   <- pa_mat[meta_sub$festival, , drop = FALSE]
+pa_sub   <- pa_sub[, colSums(pa_sub) > 0, drop = FALSE]
+
+cat("\n=== 3府県サブセット（滋賀・京都・大阪）===\n")
+cat("祭り数:", nrow(pa_sub), " 分類群数:", ncol(pa_sub), "\n")
+print(table(meta_sub$pref))
+
+set.seed(20260914)
+jac_sub  <- vegdist(pa_sub, method = "jaccard")
+nmds_sub <- metaMDS(jac_sub, k = 2, trymax = 100, trace = FALSE)
+cat("stress =", round(nmds_sub$stress, 3), "\n")
+
+nmds_sub_scores <- as.data.frame(scores(nmds_sub, display = "sites")) %>%
+  tibble::rownames_to_column("festival") %>%
+  left_join(meta_sub, by = "festival") %>%
+  mutate(pref = droplevels(pref))
+
+hulls_sub <- convex_hull_df(nmds_sub_scores)
+
+p_nmds_sub <- ggplot(nmds_sub_scores, aes(x = NMDS1, y = NMDS2, color = pref, fill = pref)) +
+  geom_polygon(data = hulls_sub, alpha = 0.12, linewidth = 0.6, linetype = "dashed") +
+  geom_point(aes(size = n_taxa), alpha = 0.9) +
+  geom_text_repel(aes(label = festival), size = 3, max.overlaps = 30,
+                  family = "HiraginoSans-W3", color = "gray15") +
+  scale_color_manual(values = PREF_PAL[sub_pref], name = "都道府県") +
+  scale_fill_manual(values = PREF_PAL[sub_pref], name = "都道府県") +
+  scale_size_continuous(range = c(2.5, 8), name = "植物種数") +
+  labs(
+    title = "植物組成 NMDS — 滋賀・京都・大阪のみ（凸包で囲む）",
+    subtitle = paste0("stress = ", round(nmds_sub$stress, 3),
+                      "　祭り数: 滋賀", sum(meta_sub$pref == "滋賀県"),
+                      "・京都", sum(meta_sub$pref == "京都府"),
+                      "・大阪", sum(meta_sub$pref == "大阪府"),
+                      "（大阪は3件のみのため凸包は三角形）"),
+    x = "NMDS1", y = "NMDS2"
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(file.path(OUTPUT_DIR, "nmds_3pref_hulls.png"), p_nmds_sub, width = 10.5, height = 8, dpi = 150)
+
+perm_sub <- adonis2(jac_sub ~ pref, data = meta_sub %>% mutate(pref = droplevels(pref)),
+                    permutations = 999)
+cat("\nPERMANOVA（3府県のみ）: R2=", round(perm_sub$R2[1], 3),
+    " F=", round(perm_sub$F[1], 2), " p=", round(perm_sub$`Pr(>F)`[1], 4), "\n")
+
+# ==============================================================================
+# 12. 植物分類を data_raw/plant_category.xlsx の6区分に集約して再解析
+# ------------------------------------------------------------------------------
+# 30分類群（taxon_kind）を「農作物／タケ・ササ類／草本／針葉樹／広葉樹／
+# つる性木本」の6区分に集約する。広葉樹だけで13分類群を吸収するため情報量は
+# 大きく失われるが、疎行列（1祭りだけの分類群が15/30）の影響を減らし、
+# 「植物の種類」よりも粗い「生活形」のレベルで見た場合に構造が変わるかを見る。
+# ==============================================================================
+
+plant_cat <- read_excel("data_raw/plant_category.xlsx") %>%
+  rename(category = 分類, taxon_kind = 植物) %>%
+  mutate(across(everything(), clean))
+
+.unmapped_taxa <- setdiff(colnames(pa_mat), plant_cat$taxon_kind)
+if (length(.unmapped_taxa) > 0) {
+  cat("\n【警告】plant_category.xlsxに対応がない分類群（集約から除外）:",
+      paste(.unmapped_taxa, collapse = "、"), "\n")
+}
+
+cat_long <- resource_df %>%
+  distinct(festival, taxon_kind) %>%
+  inner_join(plant_cat, by = "taxon_kind")
+
+cat("\n=== 6区分への集約 ===\n")
+print(as.data.frame(plant_cat %>% count(category, name = "元の分類群数")))
+
+pa_cat <- table(cat_long$festival, cat_long$category)
+pa_cat <- (pa_cat > 0) * 1
+pa_cat <- pa_cat[festivals, , drop = FALSE]
+
+cat("\n祭り×生活形区分 行列:", nrow(pa_cat), "祭り ×", ncol(pa_cat), "区分\n")
+cat("行列の密度:", round(mean(pa_cat), 3), "（分類群レベルでは0.148だった）\n")
+
+set.seed(20260914)
+jac_cat  <- vegdist(pa_cat, method = "jaccard")
+nmds_cat <- metaMDS(jac_cat, k = 2, trymax = 100, trace = FALSE)
+cat("stress =", round(nmds_cat$stress, 3), "\n")
+
+nmds_cat_scores <- as.data.frame(scores(nmds_cat, display = "sites")) %>%
+  tibble::rownames_to_column("festival") %>%
+  left_join(meta, by = "festival")
+
+hulls_cat <- convex_hull_df(nmds_cat_scores)
+
+p_nmds_cat <- ggplot(nmds_cat_scores, aes(x = NMDS1, y = NMDS2, color = pref, fill = pref)) +
+  geom_polygon(data = hulls_cat, alpha = 0.12, linewidth = 0.6, linetype = "dashed") +
+  geom_point(aes(size = n_taxa), alpha = 0.9) +
+  geom_text_repel(aes(label = festival), size = 2.7, max.overlaps = 30,
+                  family = "HiraginoSans-W3", color = "gray15") +
+  scale_color_manual(values = PREF_PAL, name = "都道府県") +
+  scale_fill_manual(values = PREF_PAL, name = "都道府県") +
+  scale_size_continuous(range = c(2, 7), name = "植物種数（元の分類群数）") +
+  labs(
+    title = "植物組成 NMDS — 生活形6区分に集約（農作物/タケ類/草本/針葉樹/広葉樹/つる性木本）",
+    subtitle = paste0("stress = ", round(nmds_cat$stress, 3),
+                      "　行列密度 ", round(mean(pa_cat), 3),
+                      "（元の分類群レベルは0.148）"),
+    x = "NMDS1", y = "NMDS2"
+  ) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(file.path(OUTPUT_DIR, "nmds_category_by_pref.png"), p_nmds_cat, width = 11, height = 8, dpi = 150)
+
+cat("\n=== PERMANOVA（生活形6区分, 全30祭り）===\n")
+run_permanova_mat <- function(var_name, mat) {
+  d <- meta %>% filter(!is.na(.data[[var_name]]))
+  if (nrow(d) < 5 || n_distinct(d[[var_name]]) < 2) {
+    cat(sprintf("  %-16s スキップ（データ不足）\n", var_name)); return(invisible())
+  }
+  sub_mat <- mat[d$festival, , drop = FALSE]
+  sub_mat <- sub_mat[, colSums(sub_mat) > 0, drop = FALSE]
+  sub_jac <- vegdist(sub_mat, method = "jaccard")
+  form <- as.formula(paste("sub_jac ~", var_name))
+  res <- adonis2(form, data = d, permutations = 999)
+  cat(sprintf("  %-16s R2=%.3f  F=%.2f  p=%.4f  (n=%d)\n",
+              var_name, res$R2[1], res$F[1], res$`Pr(>F)`[1], nrow(d)))
+}
+invisible(lapply(c("pref", "mean_embed", "n_habitats", "festival_type", "participants"),
+                 run_permanova_mat, mat = pa_cat))
+
+write.csv(as.data.frame(unclass(pa_cat)) %>% tibble::rownames_to_column("festival"),
+          file.path(OUTPUT_DIR, "festival_x_category_matrix.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8")
+write.csv(nmds_sub_scores, file.path(OUTPUT_DIR, "nmds_3pref_scores.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8")
+write.csv(nmds_cat_scores, file.path(OUTPUT_DIR, "nmds_category_scores.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8")
+
 cat("\n完了。出力先:", OUTPUT_DIR, "\n")
 cat("  nmds_by_pref.png / nmds_by_covariates.png / nmds_clusters.png / dendrogram.png\n")
 cat("  pca_by_pref.png\n")
-cat("  festival_x_plant_matrix.csv / nmds_scores_with_clusters.csv\n")
+cat("  nmds_3pref_hulls.png              滋賀・京都・大阪のみ、凸包つき\n")
+cat("  nmds_category_by_pref.png         植物を6区分に集約、凸包つき\n")
+cat("  festival_x_plant_matrix.csv / festival_x_category_matrix.csv\n")
+cat("  nmds_scores_with_clusters.csv / nmds_3pref_scores.csv / nmds_category_scores.csv\n")
