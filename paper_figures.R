@@ -68,7 +68,11 @@ save_paper <- function(p, name, width, height, dpi = 600) {
 # は小数点なしの整数目盛（0・5・10…）にする。
 # ==============================================================================
 
-count_max_01 <- max(festival_profile$n_resources, na.rm = TRUE)
+# 【2026-09-14改訂】raw_data_agg.xlsxの更新で資源レコードが0件になった
+# 祭り（n_resourcesがNA）は、0本の棒としてではなく横軸から完全に除く。
+festival_profile_01 <- festival_profile %>% filter(!is.na(n_resources))
+
+count_max_01 <- max(festival_profile_01$n_resources, na.rm = TRUE)
 
 # 【2026-09-13改訂】横版（反時計回りに90度回転したレイアウト）に変更。
 # 祭りを横軸、件数を縦軸にし、府県ごとの帯を左右に並べる
@@ -79,8 +83,9 @@ AX_TEXT_S1 <- 6.0
 
 facet_pref_h <- facet_grid(. ~ pref, scales = "free_x", space = "free_x")
 
-p01b_paper <- ggplot(festival_profile, aes(x = festival, y = n_resources)) +
+p01b_paper <- ggplot(festival_profile_01, aes(x = festival, y = n_resources)) +
   geom_col(fill = "gray35", width = 0.6, na.rm = TRUE) +
+  scale_x_discrete(drop = TRUE) +
   facet_pref_h +
   scale_y_continuous(limits = c(0, count_max_01 * 1.05), expand = c(0, 0),
                       breaks = scales::breaks_width(5)) +
@@ -93,7 +98,7 @@ p01b_paper <- ggplot(festival_profile, aes(x = festival, y = n_resources)) +
   pth
 
 save_paper(p01b_paper, "図-1_01_profile_age_and_resources.png",
-           width = max(11, length(festival_order) * 0.36), height = 5.0)
+           width = max(11, nrow(festival_profile_01) * 0.36), height = 5.0)
 
 # ---- 8cm幅版は横版では意味をなさない（30祭りを横に並べるため幅が必要）
 # ので省略し、最終版の幅は「最終セット」節で個別に決める ----
@@ -104,7 +109,7 @@ p01b_s <- p01b_paper +
         legend.text = element_text(size = AX_TEXT_S1 - 0.4))
 
 save_paper(p01b_s, "図-1_01_profile_age_and_resources_8cm.png",
-           width = max(9, length(festival_order) * 0.30), height = 4.2, dpi = 900)
+           width = max(9, nrow(festival_profile_01) * 0.30), height = 4.2, dpi = 900)
 
 # ==============================================================================
 # 図-1 = 03a_plant_prevalence_weighted
@@ -233,7 +238,8 @@ save_paper(p03a_paper_s, "図-2_03a_plant_prevalence_weighted_8cm_smallfont.png"
 # 【2026-09-12改訂】軸・凡例の文字を、他図のセル内数値と同程度の大きさ
 # まで拡大し、軸文字と凡例文字を揃える。凡例タイトルは「資源の割合」に
 # 変更し、キー（丸）の下に配置する。
-AX_TEXT_3  <- 13.5
+# 【2026-09-14改訂】軸ラベルの文字サイズを現行の1.1倍に拡大（凡例は変更なし）。
+AX_TEXT_3  <- 13.5 * 1.1
 LG_TEXT_3  <- 13.5
 LG_TITLE_3 <- 14.25
 
@@ -310,10 +316,19 @@ taxon_n_rec_17b <- resource_df %>%
   filter(!is.na(reason_types)) %>%
   count(resource_taxon, name = "n_rec")
 
-# 行ラベルは植物口径（taxon_denom$n_fes、祭り数）のまま。括弧内は数字のみ。
+# 【2026-09-15改訂】行ラベルの括弧内の数字と、％計算に使う分母は別物と
+# する。行ラベルは全図共通のplant_fes_denom（＝図-1のraw_n）を表示し、
+# ％計算の分母には資源レコード数（taxon_n_rec_17b$n_rec）を使う。
+# 【2026-09-15再改訂】ラベルの祭り数をtaxon_denom$n_fes（この図・この
+# パネル限定の集計対象で数え直したもの）からplant_fes_denom（図-1と
+# 完全に同じ数値）に変更した。図ごとに対象範囲が異なると（例：理由が
+# 未記録の祭りは対象外になる等）ラベルの数字が図によってズレてしまう
+# ため、常に図-1と同じ数字を表示するようにする。
 label_order_17b_num <- taxon_denom %>%
+  select(resource_taxon) %>%
   mutate(resource_taxon = factor(resource_taxon, levels = levels(taxon_order_17b))) %>%
   arrange(resource_taxon) %>%
+  left_join(plant_fes_denom, by = "resource_taxon") %>%
   mutate(taxon_label = paste0(resource_taxon, "（", n_fes, "）")) %>%
   pull(taxon_label)
 
@@ -321,7 +336,7 @@ reason_by_taxon_res <- reason_long_res %>%
   filter(resource_taxon %in% taxon_denom$resource_taxon) %>%
   count(resource_taxon, rtype, rlabel, name = "n") %>%
   left_join(taxon_n_rec_17b, by = "resource_taxon") %>%
-  left_join(taxon_denom %>% select(resource_taxon, n_fes), by = "resource_taxon") %>%
+  left_join(plant_fes_denom, by = "resource_taxon") %>%
   mutate(share = n / n_rec,
          taxon_label = paste0(resource_taxon, "（", n_fes, "）"))
 
@@ -346,8 +361,11 @@ p17b_main_paper <- ggplot(reason_grid_res, aes(x = rlabel, y = taxon_label)) +
                                              barwidth = unit(70, "pt"),
                                              barheight = unit(6, "pt"))) +
   # 【2026-09-13改訂】図-4と同じ方式：annotate()でパネル座標系（x=-Inf）に
-  # 直接描画し、「植物（祭り数）」の右端と「割合（%）」の左端をタイル部分の
-  # 左境界に正確に揃える（plot.title/plot.tagの近似配置はやめる）。
+  # 直接描画し、「植物（祭り数）」の右端と「割合（%）」の左端をタイル
+  # 部分の左境界に正確に揃える（plot.title/plot.tagの近似配置はやめる）。
+  # 【2026-09-15改訂】行ラベルの数字は祭り数（taxon_denom$n_fes）に戻した。
+  # ％計算自体は資源レコード数（n_rec）が分母のまま変わらない——ラベルの
+  # 数字と％の分母は意図的に別基準（前者＝祭り数、後者＝資源数）とする。
   annotate("text", x = -Inf, y = Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
            size = AX_TEXT * 1.2 / 2.845, family = "HiraginoSans-W3") +
   annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
@@ -395,7 +413,12 @@ subst_share_17b_pp <- resource_df %>%
   mutate(pct = n / sum(n)) %>%
   ungroup() %>%
   mutate(pct = ifelse(is.nan(pct), NA_real_, pct)) %>%
-  left_join(taxon_denom %>% select(resource_taxon, n_fes), by = "resource_taxon") %>%
+  # 【2026-09-15改訂】label_order_17b_numと同じ祭り数（plant_fes_denom、
+  # ＝図-1のraw_n）でラベル文字列を作る（％計算自体（pctの分母）は資源
+  # レコード数のまま変わらない。label_order_17b_numと文字列を一致させ
+  # ないとfactor化でNAになり行が消えるため、必ず同じ変数・同じ基準で
+  # 揃える）。
+  left_join(plant_fes_denom, by = "resource_taxon") %>%
   mutate(taxon_label = factor(paste0(resource_taxon, "（", n_fes, "）"), levels = rev(label_order_17b_num)))
 
 p17b_subst_paper <- ggplot(subst_share_17b_pp, aes(x = pct, y = taxon_label, fill = subst_label)) +
@@ -439,38 +462,26 @@ save_paper(p17b_paper, "図-5_17b_reason_by_plant.png",
 # 図-3・図-4と同じ理由で8cm幅では判読不能になる。7.8inを維持する。
 
 # ==============================================================================
-# 図-6 = 03b_plant_prevalence_by_pref
-# ==============================================================================
-
-p03b_paper <- p03b + noti + pth
-p03b_paper$layers[[1]]$aes_params$colour <- "gray75"   # タイル罫線を白→灰に
-p03b_paper$layers[[2]]$aes_params$size <- GT_MD
-
-save_paper(p03b_paper, "図-6_03b_plant_prevalence_by_pref.png",
-           width = 3.8, height = max(5, nrow(prev_plot) * 0.20))
-
-# ---- 8cm幅版（列は6府県のみなので縮小の余地あり）----
-p03b_s <- p03b_paper +
-  theme(axis.text = element_text(size = 6.2),
-        axis.title = element_text(size = 6.8),
-        legend.text = element_text(size = 6.0),
-        legend.title = element_text(size = 6.4))
-p03b_s$layers[[2]]$aes_params$size <- 2.0   # セル内「n/n_sample」文字
-
-save_paper(p03b_s, "図-6_03b_plant_prevalence_by_pref_8cm.png",
-           width = w8, height = 6.8, dpi = 900)
-
-# ==============================================================================
 # 図-6 = 23c_method_type_by_plant
 # ==============================================================================
 
 p23c_paper <- p23c + noti + pth +
-  theme(legend.position = "bottom", plot.margin = margin(3, 22, 3, 3)) +
+  theme(legend.position = "bottom", plot.margin = margin(14, 22, 3, 3),
+        panel.border = element_rect(linewidth = 0.15)) +
   scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式", drop = FALSE,
                      labels = function(x) sub("^[①②③④⑤]\\s*", "", x)) +
   scale_x_discrete(labels = function(x) sub("n=", "", x)) +
   labs(y = "割合") +
-  guides(fill = guide_legend(nrow = 1))
+  guides(fill = guide_legend(nrow = 1)) +
+  # 【2026-09-14追加】左上角に「植物（祭り数）」を、右端がパネル左境界に
+  # 揃うように注記する。coord_flip後はx=Inf側が画面上端、y=-Inf側が
+  # 画面左端になる（taxon_labelはrev()済みのためx=Infが先頭の植物）。
+  # 【2026-09-15訂正】行ラベルの数字は祭り数（plant_fes_denom$n_fes、
+  # ＝図-1のraw_nと同じ全図共通の数字）に戻した。％計算の分母
+  # （taxon_n_23c$n_total、資源レコード数）とは意図的に別基準。
+  annotate("text", x = Inf, y = -Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
+           size = 4.6 / 2.845, family = "HiraginoSans-W3") +  # 4.6 = F_AX_TEXT（最終8cm版の軸文字サイズ）に合わせる
+  coord_flip(clip = "off")
 # 【注】件数は行ラベル（taxon_label）に埋め込み済みなので専用のgeom_textはない。
 # 凡例から番号を外して短くしたので1行に収まる。
 
@@ -500,12 +511,19 @@ save_paper(p23c_s, "図-7_23c_method_type_by_plant_8cm.png",
 
 # 【2026-09-11改訂】並びを「変化が大きい順」からTAXON_ORDER（生活形）順に
 # 変更し、他の植物別の図（図03a・17b・19c・19d・23c・29）と揃える。
+# 【2026-09-15改訂】行ラベルの括弧内の数字と％計算の分母を別基準にする。
+# ラベルは全図共通のplant_fes_denom（＝図-1のraw_n）を表示し、％計算の
+# 分母には資源レコード数（change_denom$n_rec、現在使われていない資源も
+# 含む）を使う。
+# 【2026-09-15再改訂】ラベルの祭り数はこの図の対象範囲（調達地変化が
+# 記録された記録）だけで数え直すのではなく、常に図-1と同じ数字にする。
 p28_taxon_order <- rev(levels(order_taxon(change_denom$resource_taxon)))
 p28_label_levels <- paste0(p28_taxon_order, "（",
-  change_denom$n_rec[match(p28_taxon_order, change_denom$resource_taxon)], "件）")
+  plant_fes_denom$n_fes[match(p28_taxon_order, plant_fes_denom$resource_taxon)], "件）")
 
 change_summary_pp <- change_summary %>%
-  mutate(taxon_label = factor(paste0(resource_taxon, "（", n_rec, "件）"),
+  left_join(plant_fes_denom, by = "resource_taxon") %>%
+  mutate(taxon_label = factor(paste0(resource_taxon, "（", n_fes, "件）"),
                               levels = p28_label_levels))
 
 # 【2026-09-13改訂】凡例名を「調達地の状況」に、「以前より近い／広い」を
@@ -516,7 +534,6 @@ CHANGE_LABELS_08 <- c("以前より近い" = "以前より近い範囲", "以前
 
 p28_paper <- ggplot(change_summary_pp, aes(x = taxon_label, y = pct, fill = change_cat)) +
   geom_col(position = position_stack(reverse = TRUE), width = 0.7) +
-  coord_flip() +
   scale_fill_manual(values = CHANGE_PAL, name = "調達地の状況", drop = FALSE,
                      labels = function(x) ifelse(x %in% names(CHANGE_LABELS_08),
                                                   CHANGE_LABELS_08[x], x)) +
@@ -525,8 +542,18 @@ p28_paper <- ggplot(change_summary_pp, aes(x = taxon_label, y = pct, fill = chan
   labs(x = NULL, y = "割合") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank()) +
-  pth + theme(legend.position = "bottom") +
-  guides(fill = guide_legend(nrow = 1))
+  pth + theme(legend.position = "bottom", plot.margin = margin(14, 5.5, 5.5, 5.5),
+              panel.border = element_rect(linewidth = 0.15)) +
+  guides(fill = guide_legend(nrow = 1)) +
+  # 【2026-09-14追加】左上角に「植物（祭り数）」を、右端がパネル左境界に
+  # 揃うように注記する（図-6と同じ方式）。plot.marginはpthの後で上書き
+  # しないとpthのmargin(3,5,3,3)に戻ってしまうため、ここに置く。
+  # 【2026-09-15訂正】行ラベルの数字は祭り数（change_fes_denom$n_fes）に
+  # 戻した。％計算の分母（change_denom$n_rec、資源レコード数、現在使われて
+  # いない資源も含む）とは意図的に別基準。
+  annotate("text", x = Inf, y = -Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
+           size = 4.6 / 2.845, family = "HiraginoSans-W3") +  # 4.6 = F_AX_TEXT（最終8cm版の軸文字サイズ）に合わせる
+  coord_flip(clip = "off")
 
 save_paper(p28_paper, "図-8_28_procurement_change_by_plant.png",
            width = 4.7, height = max(5, nrow(change_denom) * 0.17))
@@ -546,24 +573,6 @@ p28_s <- p28_paper +
 
 save_paper(p28_s, "図-8_28_procurement_change_by_plant_8cm.png",
            width = w8, height = 3.4, dpi = 900)
-
-# ==============================================================================
-# 図-9 = 29_plant_x_method_x_change
-# ==============================================================================
-
-p29_paper <- p29 + noti + pth +
-  theme(axis.text.x = element_text(size = AX_TEXT - 0.5, angle = 45, hjust = 1)) +
-  facet_wrap(~ method_type, nrow = 1,
-             labeller = as_labeller(function(x) sub("^[①②③④⑤]\\s*", "", x)))
-p29_paper$layers[[2]]$aes_params$size <- 2.9
-# 【注】5つの小図（調達方式）×各3列（調達地の変化）を並べるため、
-# 半ページ幅には収まらない。列同士のラベルが衝突しない最低限の幅を確保する。
-save_paper(p29_paper, "図-9_29_plant_x_method_x_change.png",
-           width = 9.0, height = max(6, length(taxon_order_29) * 0.19))
-
-# 【8cm版は省略】5つの小図（調達方式）を横に並べるため、8cm幅では
-# 小図1つあたり1.6cm程度しか割り当てられず、各小図内の3列（調達地の
-# 変化）とその軸ラベルが判読不能になる。9.0inを維持する。
 
 # ==============================================================================
 # その他図-1 = 24a_plant_x_landscape（914本文用原稿では未引用のため8図の通し番号から外す）
@@ -636,7 +645,6 @@ landscape_change_summary_pp <- landscape_change_summary %>%
 p28b_paper <- ggplot(landscape_change_summary_pp, aes(x = land_label, y = pct, fill = change_cat)) +
   # 【2026-09-13改訂】積み上げ順を凡例の並び順と一致させる（reverse=TRUE）。
   geom_col(position = position_stack(reverse = TRUE), width = 0.7) +
-  coord_flip() +
   scale_fill_manual(values = CHANGE_PAL, name = "調達地の状況", drop = FALSE,
                      labels = c("以前より近い" = "以前より近い範囲",
                                 "以前より広い" = "以前より広い範囲")) +
@@ -645,8 +653,17 @@ p28b_paper <- ggplot(landscape_change_summary_pp, aes(x = land_label, y = pct, f
   labs(x = NULL, y = "割合") +
   theme_bw(base_family = "HiraginoSans-W3") +
   theme(panel.grid.major.y = element_blank()) +
-  pth + theme(legend.position = "bottom") +
-  guides(fill = guide_legend(nrow = 1))
+  # 【2026-09-14改訂】この図の行ラベル（二次林等）は短いため、自動確保
+  # される左余白だけでは注記文字列「土地利用（植物資源数）」がはみ出して
+  # 切れてしまう。左余白を広げて収める。
+  pth + theme(legend.position = "bottom", plot.margin = margin(14, 5.5, 5.5, 16),
+              panel.border = element_rect(linewidth = 0.15)) +
+  guides(fill = guide_legend(nrow = 1)) +
+  # 【2026-09-14追加】左上角に「土地利用（植物資源数）」を、右端がパネル
+  # 左境界に揃うように注記する（図-6・図-7と同じ方式）。
+  annotate("text", x = Inf, y = -Inf, label = "土地利用（植物資源数）", hjust = 1, vjust = -1.2,
+           size = 4.6 / 2.845, family = "HiraginoSans-W3") +  # 4.6 = F_AX_TEXT（最終8cm版の軸文字サイズ）に合わせる
+  coord_flip(clip = "off")
 
 save_paper(p28b_paper, "図-11_28b_procurement_change_by_landscape.png",
            width = 4.7, height = max(4, nrow(landscape_change_denom) * 0.30))
@@ -774,14 +791,15 @@ save_final <- function(p, name, width, height, dpi = 900) {
 # 【2026-09-13改訂】横版のため8cm幅の制約から外れ、他の横幅図（図-3・
 # 図-4等）と同様に必要な幅を確保する。文字サイズも少し拡大する。
 # 【2026-09-13改訂】文字サイズをすべてx軸ラベルの2倍（7.0pt→14.0pt）に統一。
+# 【2026-09-14改訂】文字をさらに拡大（14.0pt→16.0pt）。
 p01_final <- p01b_paper +
-  theme(axis.text = element_text(size = 14.0),
-        axis.title = element_text(size = 14.0),
-        strip.text = element_text(size = 14.0),
-        legend.text = element_text(size = 14.0),
-        legend.title = element_text(size = 14.0))
+  theme(axis.text = element_text(size = 16.0),
+        axis.title = element_text(size = 16.0),
+        strip.text = element_text(size = 16.0),
+        legend.text = element_text(size = 16.0),
+        legend.title = element_text(size = 16.0))
 save_final(p01_final, "図-2_01_profile_age_and_resources.png",
-           width = max(11, length(festival_order) * 0.36), height = 4.2)
+           width = max(11, nrow(festival_profile_01) * 0.36), height = 4.2)
 
 # ---- 図-1（8cm版、非ヒートマップ）----
 p02_final <- p03a_paper_s + final_text_theme
@@ -870,15 +888,6 @@ p05_final <- (p17b_main_final + p17b_subst_final +
 save_final(p05_final, "図-5_17b_reason_by_plant.png",
            width = 7.8, height = max(7.0, nrow(taxon_denom) * 0.22 + 0.6))
 
-# ---- 図-6（8cm版、ヒートマップ）文字を拡大 ----
-p06_final <- recolor_tiles(p03b_s) + heat_frame_theme +
-  theme(axis.text = element_text(size = 6.5),
-        axis.title = element_text(size = 7.0),
-        legend.text = element_text(size = 6.2),
-        legend.title = element_text(size = 6.6))
-save_final(p06_final, "図-6_03b_plant_prevalence_by_pref.png",
-           width = w8, height = 6.8)
-
 # ---- 図-6（8cm版、非ヒートマップ）----
 p07_final <- p23c_s + final_text_theme
 save_final(p07_final, "図-6_23c_method_type_by_plant.png",
@@ -890,33 +899,6 @@ p08_final <- p28_s + final_text_theme
 p08_final$data <- p08_final$data %>% filter(resource_taxon != "吉祥草")
 save_final(p08_final, "図-7_28_procurement_change_by_plant.png",
            width = w8, height = 3.4)
-
-# ---- 図-9（8cm不可、元の幅のまま。ヒートマップ）----
-# 値がないセルにも罫線を表示するため、行×小図×列の全組み合わせに展開
-mat_29_complete <- change_method_df %>%
-  count(resource_taxon, method_type, change_cat, name = "n") %>%
-  complete(resource_taxon = taxon_order_29,
-           method_type = levels(change_method_df$method_type),
-           change_cat = levels(change_method_df$change_cat),
-           fill = list(n = 0)) %>%
-  # complete()はfactorの列順を保持しないことがあるため、明示的に再設定
-  mutate(resource_taxon = factor(resource_taxon, levels = rev(taxon_order_29)),
-         method_type = factor(method_type, levels = levels(change_method_df$method_type)),
-         change_cat = factor(change_cat, levels = levels(change_method_df$change_cat)))
-
-p09_final <- ggplot(mat_29_complete, aes(x = change_cat, y = resource_taxon, fill = ifelse(n > 0, n, NA))) +
-  geom_tile(color = "black", linewidth = 0.15) +
-  geom_text(aes(label = ifelse(n > 0, n, "")), size = 2.9, family = "HiraginoSans-W3", color = "gray15") +
-  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white", name = "記録数") +
-  scale_y_discrete(drop = FALSE) +
-  facet_wrap(~ method_type, nrow = 1) +
-  labs(x = NULL, y = NULL) +
-  theme_bw(base_family = "HiraginoSans-W3") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        strip.text = element_text(face = "bold")) +
-  heat_frame_theme + final_text_theme
-save_final(p09_final, "図-9_29_plant_x_method_x_change.png",
-           width = 9.0, height = max(6, length(taxon_order_29) * 0.19))
 
 # ---- その他図-1（8cm版、ヒートマップ）文字を拡大 + 図-6と同じく
 #      値がないセルにも罫線を表示（行×列を完全展開）----

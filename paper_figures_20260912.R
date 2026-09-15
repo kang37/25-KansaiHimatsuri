@@ -13,10 +13,6 @@
 #   raw_data_agg.xlsxがカバーしない = 受协力者年齢(結果0/mt0) → 図2、
 #   話題頻度/保全管理活動(結果6/mt6) → その他図-2。これらは既存の確認済み
 #   画像をそのままコピーする。
-#   03b_plant_prevalence_by_pref・29_plant_x_method_x_changeは今回不要の
-#   ため出力しない（コード内ではそれぞれ旧番号「図-6」「図-9」のまま
-#   残置しているが、914本文用原稿の図番号とは無関係で、単に除外対象を
-#   示す内部識別名に過ぎない）。
 # 実装: main2.R に追加した USE_RAW_DATA_AGG トグルでraw_data_agg.xlsxから
 # 資源レコードを読み込み、既存の paper_figures.R（8cm版の作図ロジック）を
 # そのまま再利用する（PAPER_DIR/FINAL_DIRを新しい出力先に差し替え）。
@@ -36,15 +32,6 @@ source("paper_figures.R")
 #     ないためデータ自体は変わらないが、2026-09-13にラベル文言・フォント
 #     サイズを見直したためもうコピーせず、paper_figures.R内で（同じデータ
 #     のまま）都度描き直す。 ---
-
-# --- 図6・図9：今回は不要（FINAL_DIR・SVG_DIRとも削除） ---
-for (base in c("図-6_03b_plant_prevalence_by_pref",
-               "図-9_29_plant_x_method_x_change")) {
-  for (p in c(file.path(FINAL_DIR, paste0(base, ".png")),
-              file.path(SVG_DIR, paste0(base, ".svg")))) {
-    if (file.exists(p)) { file.remove(p); cat("removed (not needed):", basename(p), "\n") }
-  }
-}
 
 cat("\n=== paper_20260912 完了:", length(list.files(FINAL_DIR, pattern = "\\.png$")),
     "枚（PNG/CSV:", FINAL_DIR, "、SVG:", SVG_DIR, "） ===\n")
