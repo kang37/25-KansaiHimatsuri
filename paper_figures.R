@@ -465,45 +465,47 @@ save_paper(p17b_paper, "図-5_17b_reason_by_plant.png",
 # 図-6 = 23c_method_type_by_plant
 # ==============================================================================
 
-p23c_paper <- p23c + noti + pth +
-  theme(legend.position = "bottom", plot.margin = margin(14, 22, 3, 3),
-        panel.border = element_rect(linewidth = 0.15)) +
-  scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式", drop = FALSE,
-                     labels = function(x) sub("^[①②③④⑤]\\s*", "", x)) +
-  scale_x_discrete(labels = function(x) sub("n=", "", x)) +
-  labs(y = "割合") +
-  guides(fill = guide_legend(nrow = 1)) +
-  # 【2026-09-14追加】左上角に「植物（祭り数）」を、右端がパネル左境界に
-  # 揃うように注記する。coord_flip後はx=Inf側が画面上端、y=-Inf側が
-  # 画面左端になる（taxon_labelはrev()済みのためx=Infが先頭の植物）。
-  # 【2026-09-15訂正】行ラベルの数字は祭り数（plant_fes_denom$n_fes、
-  # ＝図-1のraw_nと同じ全図共通の数字）に戻した。％計算の分母
-  # （taxon_n_23c$n_total、資源レコード数）とは意図的に別基準。
-  annotate("text", x = Inf, y = -Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
-           size = 4.6 / 2.845, family = "HiraginoSans-W3") +  # 4.6 = F_AX_TEXT（最終8cm版の軸文字サイズ）に合わせる
-  coord_flip(clip = "off")
-# 【注】件数は行ラベル（taxon_label）に埋め込み済みなので専用のgeom_textはない。
-# 凡例から番号を外して短くしたので1行に収まる。
+# 【2026-09-16改訂：ヒートマップ化】1レコードに複数の調達方式が併記される
+# 記録（全体の約4割）を「代表1方式」に丸めず、資源分母・不互斥（図-4と
+# 同じ方式）で計上することにしたため、行の合計が100%を超えうる積み上げ
+# 棒グラフから、図-5左図と同じ様式のヒートマップに変更した。
+p23c_paper <- ggplot(method_type_grid, aes(x = method_type, y = taxon_label)) +
+  geom_tile(aes(fill = ifelse(pct > 0, pct, NA)), color = "gray75", linewidth = 0.35) +
+  geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1, suffix = ""), "")),
+            size = 2.9 * 1.2, family = "HiraginoSans-W3",
+            color = ifelse(method_type_grid$pct > 0.5, "white", "gray20")) +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
+                      limits = c(0, 1), breaks = c(0, 0.5, 1),
+                      labels = scales::percent, name = "各方式の割合　",
+                      guide = guide_colorbar(title.position = "left",
+                                             barwidth = unit(70, "pt"),
+                                             barheight = unit(6, "pt"))) +
+  scale_x_discrete(labels = function(x) sub("^[①②③④⑤]\\s*", "", x)) +
+  # 図-5左図と同じ方式：annotate()でパネル座標系（x=-Inf）に直接描画し、
+  # 「植物（祭り数）」の右端と「割合（%）」の左端をタイル部分の左境界に
+  # 正確に揃える。行ラベルの祭り数はplant_fes_denom（＝図-1のraw_n）で、
+  # ％計算の分母（資源レコード数）とは意図的に別基準。
+  annotate("text", x = -Inf, y = Inf, label = "植物（祭り数）", hjust = 1, vjust = -1.2,
+           size = AX_TEXT * 1.2 / 2.845, family = "HiraginoSans-W3") +
+  annotate("text", x = -Inf, y = Inf, label = "割合（%）", hjust = 0, vjust = -1.2,
+           size = AX_TEXT * 1.2 / 2.845, family = "HiraginoSans-W3") +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, y = NULL) +
+  theme_bw(base_family = "HiraginoSans-W3") +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1)) +
+  # 【2026-09-16追加】legend.position="bottom"を明示しないと、単独図の
+  # 場合はcolorbarが縦向きになりbarheight=6ptに0%/50%/100%が押し込まれて
+  # 重なってしまう（図-5は左右2枚をpatchworkで結合する際に外側から
+  # legend.position="bottom"を与えているため、この図でも同様に必要）。
+  pth + theme(plot.margin = margin(18, 10, 3, 3), legend.position = "bottom")
 
 save_paper(p23c_paper, "図-7_23c_method_type_by_plant.png",
-           width = 6.2, height = max(6, n_distinct(method_type_long$taxon_label) * 0.17))
+           width = 7.0, height = max(6, n_distinct(method_type_grid$taxon_label) * 0.28))
 
-# ---- 8cm幅版 ----
-# 【2026-09-13改訂】凡例を1行に収め、キーと文字の間の余白を詰める。
-p23c_s <- p23c_paper +
-  theme(axis.text = element_text(size = 4.6),
-        axis.title = element_text(size = 5.0),
-        legend.text = element_text(size = 4.2, margin = margin(l = 0)),
-        legend.title = element_text(size = 4.6),
-        legend.box.spacing = unit(2, "pt"),
-        legend.spacing.x = unit(4, "pt"),
-        legend.key.spacing.x = unit(0, "pt"),
-        legend.margin = margin(0, 0, 0, 0),
-        legend.key.size = unit(7, "pt")) +
-  guides(fill = guide_legend(nrow = 1))
-
-save_paper(p23c_s, "図-7_23c_method_type_by_plant_8cm.png",
-           width = w8, height = 3.3, dpi = 900)
+# ---- 8cm幅版は列（方式5類型）に対して行（植物30分類群）が多く、
+# セルが小さくなりすぎ判読不能になるため省略する（図-3・図-4と同じ理由）。
+# 最終版の幅は「最終セット」節で個別に決める。
 
 # ==============================================================================
 # 図-7 = 28_procurement_change_by_plant
@@ -888,10 +890,14 @@ p05_final <- (p17b_main_final + p17b_subst_final +
 save_final(p05_final, "図-5_17b_reason_by_plant.png",
            width = 7.8, height = max(7.0, nrow(taxon_denom) * 0.22 + 0.6))
 
-# ---- 図-6（8cm版、非ヒートマップ）----
-p07_final <- p23c_s + final_text_theme
+# ---- 図-6（ヒートマップ、図-5左図と同じ文字サイズ・タイル様式）----
+p07_final <- recolor_tiles(p23c_paper) + heat_frame_theme +
+  theme(axis.text = element_text(size = F5_TEXT),
+        axis.title = element_text(size = F5_TITLE),
+        legend.text = element_text(size = F5_TEXT),
+        legend.title = element_text(size = F5_TITLE))
 save_final(p07_final, "図-6_23c_method_type_by_plant.png",
-           width = w8, height = 3.3)
+           width = 6.0, height = max(6.0, n_distinct(method_type_grid$taxon_label) * 0.22 + 0.6))
 
 # ---- 図-7（8cm版、非ヒートマップ）「吉祥草」（TAXON_ORDER外の1件のみの
 #      記録で、他図には登場しない）を除外 ----

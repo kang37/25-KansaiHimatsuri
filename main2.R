@@ -46,7 +46,7 @@ DATA_PATH   <- "data_raw/火祭の資源と組織調査結果_20260830.xlsx"
 # 原票（DATA_PATH）から読むのは祭りレベルの変数のみ：
 #   協力者年齢／関係者数・観光客数とその変化／信仰／祭り目的／保存会・氏子組織／
 #   火祭り中心世代／近年の課題／社会意義
-MATOME_PATH <- "data_raw/分析内容まとめ.xlsx"
+MATOME_PATH <- "data_raw/分析内容まとめ20260901.xlsx"
 OUTPUT_DIR  <- "data_proc/20260902"
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
@@ -222,8 +222,11 @@ extract_age_simple <- function(x) {
 # シートの並びが変わった点に注意：新設の「受访者信息」が先頭に挿入された
 # ため、旧結果1〜6は結果2〜7にシフトしている。読み違いを避けるため
 # 名前付きベクトルで固定する。
-MT_SHEET <- c(informant = 1, daily = 2, use = 3, pref = 4,
-             method = 5, landscape = 6, engagement = 7)
+# 【2026-09-16改訂】data_raw/分析内容まとめ20260901.xlsxで「受访者信息」
+# シートが削除され、6シート構成（結果1〜6が再びシート1〜6に一致）に
+# 戻ったため、informantを除いて番号をシフトし直した。
+MT_SHEET <- c(daily = 1, use = 2, pref = 3,
+             method = 4, landscape = 5, engagement = 6)
 
 # 非植物資材（結果1の植物の種類・材質に人手で記録されている）
 NONPLANT_TAXA <- c("アルミ・灯油", "ワタ（綿）", "タオル（綿）", "布類（材質不明）")
@@ -246,35 +249,16 @@ matome_clean <- function(x) str_squish(str_replace_all(as.character(x), "[\r\n]+
 
 read_matome <- function(i) suppressMessages(read_excel(MATOME_PATH, sheet = i, col_names = TRUE))
 
-# --- 0. 受访者信息（協力者×年齢）---
-mt0 <- read_matome(MT_SHEET["informant"]) %>%
-  rename(festival = 1, informant_name = 2, informant_role = 3,
-         age_raw = 4, source_cell = 5) %>%
-  mutate(across(c(festival, informant_name, informant_role, age_raw), matome_clean))
+# 【2026-09-16改訂】mt0（受访者信息／年齢）・mt1（結果1）・mt2（結果2）・
+# mt4（結果4）・mt5（結果5）は、USE_RAW_DATA_AGG=TRUEの経路（raw_data_agg.
+# xlsxから資源レコードを読む、if文の実行される側）では一切参照されない
+# （非raw_data_agg経路＝elseブランチだけで使われていたが、そちらは評価
+# されないため未定義でも実害はない）。分析内容まとめ20260901.xlsxで
+# 「受访者信息」シートが削除され、結果1・結果2・結果4・結果5も列構成が
+# 大幅に統合されて旧列名が使えなくなったため、使われていないこれらの
+# 読み込みは削除した（年齢の図はすでに図-1から削除済みで不要）。
 
-age_long <- mt0 %>%
-  mutate(age = vapply(age_raw, extract_age_simple, numeric(1))) %>%
-  filter(!is.na(age)) %>%
-  select(festival, age)
-
-# --- 1. 結果1（日常利用の有無 + 現時点の祭り利用）---
-mt1 <- read_matome(MT_SHEET["daily"]) %>%
-  rename(festival = 1, taxon_kind = 2, resource_raw = 3,
-         daily_class = 4, daily_note = 5, current_use = 6) %>%
-  mutate(across(c(festival, taxon_kind, resource_raw, daily_class, daily_note), matome_clean),
-         current_use = suppressWarnings(as.integer(current_use)))
-
-# --- 2. 結果2（利用方法・選定理由・代替可能性）---
-mt2 <- read_matome(MT_SHEET["use"]) %>%
-  rename(taxon_kind = 1, part = 2, festival = 3, use_class = 4, use_note = 5,
-         reason_raw = 6, subst_class = 7, subst_note = 8) %>%
-  mutate(across(c(taxon_kind, part, festival, use_class, use_note,
-                  reason_raw, subst_class, subst_note), matome_clean),
-         # 結合キー用：「稲穂」(結果2) と「穂」(結果4) の表記差のみ吸収する
-         # （もち米・赤米の2件。他に「稲」で始まる part 値はない）。
-         join_part = coalesce(str_replace(part, "^稲", ""), ""))
-
-# --- 3. 結果3（府県×資源グループ）---
+# --- 3. 結果3（府県）---
 mt3 <- read_matome(MT_SHEET["pref"]) %>% rename(pref = 1, festival = 2) %>%
   mutate(across(c(pref, festival), matome_clean))
 
@@ -283,47 +267,15 @@ FESTIVAL_PREF <- setNames(mt3$pref, mt3$festival)
 stopifnot(all(sheets %in% names(FESTIVAL_PREF)))
 stopifnot(all(FESTIVAL_PREF %in% PREF_ORDER))
 
-# 結果3 の資源グループ（祭り×グループ10列、セルに資源名が空白区切り）を
-# (祭り, 資源名) → グループ の対応表に展開する。図17bで使用する粗い9分類。
-MATOME_TAXON_COLS <- c("稲・米・藁類", "麦・菜種類", "ヨシ・カヤ・ススキ類",
-                       "タケ・ササ類", "マツ類", "スギ・ヒノキ類",
-                       "その他樹木・柴類", "蔓・縄・繊維類", "その他植物・供物類")
-
-taxon_matome_map <- mt3 %>%
-  select(festival, all_of(MATOME_TAXON_COLS)) %>%
-  pivot_longer(-festival, names_to = "taxon_matome", values_to = "res_list") %>%
-  filter(!is.na(res_list), matome_clean(res_list) != "") %>%
-  mutate(res_list = matome_clean(res_list)) %>%
-  separate_rows(res_list, sep = "[[:space:]]+") %>%
-  filter(res_list != "") %>%
-  distinct(festival, res_list, taxon_matome)
-
-# --- 4. 結果4（調達方法・調達時期）— 資源レコードの軸（スパイン）---
-mt4 <- read_matome(MT_SHEET["method"]) %>%
-  rename(festival = 1, taxon_kind = 2, part = 3,
-         method_class = 4, method_note = 5, timing_raw = 6) %>%
-  mutate(across(c(festival, taxon_kind, part, method_class, method_note), matome_clean),
-         join_part = coalesce(str_replace(part, "^稲", ""), ""))
-stopifnot(!anyDuplicated(paste(mt4$festival, mt4$taxon_kind, mt4$join_part)))
-
-# --- 5. 結果5（調達地の変化・景観）---
-# 結果4と行順・(祭り,植物の種類・材質)が完全一致することを確認済みのため、
-# 位置対応で結合する（キー一致による突合は不要）。
-mt5 <- read_matome(MT_SHEET["landscape"]) %>%
-  rename(festival = 1, taxon_kind = 2, part = 3,
-         change_class = 4, change_note = 5, landscape_raw = 6) %>%
-  mutate(across(c(festival, taxon_kind, part, change_class, change_note, landscape_raw),
-                matome_clean))
-stopifnot(nrow(mt4) == nrow(mt5),
-          all(mt4$festival == mt5$festival),
-          all(mt4$taxon_kind == mt5$taxon_kind))
-
 # --- 6. 結果6（話題頻度・保全管理活動、祭りレベル）---
 # ここだけチェック選択肢＋自由記述が未分離のため、統制語彙の先頭一致で
 # スコア化する（コーディング表は下の code_topic()/code_mgmt() 定義を参照）。
+# 【2026-09-16改訂】分析内容まとめ20260901.xlsxで話題・管理活動それぞれの
+# 「区分」列と「補足説明」列が1列に統合されたが、セル内は引き続き
+# 「□選択肢のテキスト\r\n自由記述」の順で始まるため、先頭一致の
+# code_topic()/code_mgmt()はそのまま使える（列を3列に読み替えるだけ）。
 mt6 <- read_matome(MT_SHEET["engagement"]) %>%
-  rename(festival = 1, topic_class = 2, topic_note = 3,
-         mgmt_class = 4, mgmt_note = 5) %>%
+  rename(festival = 1, topic_class = 2, mgmt_class = 3) %>%
   mutate(across(everything(), matome_clean))
 
 # ------------------------------------------------------------------------------
@@ -442,14 +394,28 @@ METHOD_TYPE_PAL <- setNames(
   METHOD_TYPE_ORDER
 )
 
+# 【2026-09-16改訂】以前は winning_method_cat() で「最も自給的な1方式」に
+# 代表させていたが、1レコードに複数の調達方式（例：【氏子・保存会採取】
+# 【外部協力者提供】）が併記される記録が全体の約4割（51/130件）を占める
+# ことを確認したため、図-6（23c）はこれを「不採用/切り捨て」にせず、
+# 該当するすべての行為類型を返す（"|"区切り、重複除去）方式に変更した。
+# code_embeddedness（嵌入度の強弱という別の順序尺度）は従来通り
+# winning_method_cat() で単一代表を使い続ける（互斥な尺度のため）。
 code_method_type <- function(x) {
   cat_str <- bracket_cat(x)
   vapply(cat_str, function(cs) {
-    winner <- winning_method_cat(cs)
-    if (is.na(winner)) return(NA_character_)
-    hit <- METHOD_TYPE_ORDER[vapply(METHOD_TYPE_LEVELS, function(v) winner %in% v, logical(1))]
-    if (!length(hit)) return(NA_character_)
-    hit[1]
+    if (is.na(cs)) return(NA_character_)
+    parts <- str_trim(str_split(cs, "[／|]")[[1]])
+    parts <- str_replace_all(parts, "[（(].*?[）)]", "")
+    parts <- parts[parts != ""]
+    if (!length(parts)) return(NA_character_)
+    groups <- unique(unlist(lapply(parts, function(p) {
+      hit <- METHOD_TYPE_ORDER[vapply(METHOD_TYPE_LEVELS, function(v) p %in% v, logical(1))]
+      if (length(hit)) hit[1] else NA_character_
+    })))
+    groups <- intersect(METHOD_TYPE_ORDER, groups)  # ①→⑤の順に並べ直す
+    if (!length(groups)) return(NA_character_)
+    paste(groups, collapse = "|")
   }, character(1), USE.NAMES = FALSE)
 }
 
@@ -845,21 +811,6 @@ plant_festival <- resource_df %>%
                 ~ ifelse(is.nan(.x), NA_real_, .x))) %>%
   left_join(fest_design, by = "festival")
 
-# 祭り × まとめ資源グループ（結果3の分類。図17bで使う）
-plant_festival_mt <- resource_df %>%
-  filter(!is.na(taxon_matome)) %>%
-  group_by(festival, taxon_matome) %>%
-  summarise(
-    n_parts      = n(),
-    parts        = paste(unique(resource_raw), collapse = " / "),
-    reason_types = {
-      ty <- unique(unlist(strsplit(na.omit(reason_types), "\\|")))
-      if (length(ty) == 0) NA_character_ else paste(sort(ty), collapse = "|")
-    },
-    .groups = "drop"
-  ) %>%
-  left_join(fest_design, by = "festival")
-
 # 【2026-09-15追加】raw_data_agg.xlsxの更新で資源記録が0件になった祭り
 # （festival_profileでn_resourcesがNAになるもの）は、図-1の分母（祭り数）
 # からも除く。固定の30ではなく、実際に資源記録が残っている祭りの数を
@@ -918,14 +869,13 @@ resource_diversity <- resource_df %>%
   group_by(festival) %>%
   summarise(n_resources = n_distinct(resource_taxon), .groups = "drop")
 
-age_summary <- age_long %>%
-  group_by(festival) %>%
-  summarise(mean_age = mean(age), n_inf = n(), .groups = "drop")
-
-# --- 全30祭りを含む並び順の土台（年齢・資源数が欠測の祭りも行を残す） ---
+# --- 全30祭りを含む並び順の土台（資源数が欠測の祭りも行を残す） ---
+# 【2026-09-16改訂】年齢データ（受访者信息シート）が原本から削除された
+# ため、mean_ageによる並び替えは廃止し、祭り名の五十音順に変更した
+# （年齢は図-1からすでに削除済みで、festival_profileでは並び順にしか
+# 使っていなかったため実質的な影響はない）。
 festival_profile <- tibble(festival = sheets) %>%
   mutate(pref = factor(unname(FESTIVAL_PREF[festival]), levels = PREF_ORDER)) %>%
-  left_join(age_summary,        by = "festival") %>%
   left_join(resource_diversity, by = "festival")
 
 if (any(is.na(festival_profile$pref))) {
@@ -933,10 +883,9 @@ if (any(is.na(festival_profile$pref))) {
           paste(festival_profile$festival[is.na(festival_profile$pref)], collapse = ", "))
 }
 
-# 府県ごとにまとめ、府県内は平均年齢の昇順（coord_flip 後は上ほど高齢）
-# coord_flip 後は最初の水準が下に来るため、昇順で並べると上ほど高齢になる
+# 府県ごとにまとめ、府県内は祭り名の五十音順
 festival_order <- festival_profile %>%
-  arrange(pref, mean_age) %>%
+  arrange(pref, festival) %>%
   pull(festival)
 
 fct_fes <- function(x) factor(x, levels = festival_order)
@@ -1370,70 +1319,81 @@ write.csv(mat_19d %>% arrange(desc(pct)), file.path(OUTPUT_DIR, "plant_x_part.cs
 # （観測された標本の記述、23a/23bと同じ方針）。
 # 【2026-09-08改訂】並びは記録数順ではなく、他の植物別の図（図03a・17b・
 # 19c・19d・23b・29）と揃えてTAXON_ORDER（生活形）順にする。
+# 【2026-09-16改訂：資源分母＋不互斥へ変更】1レコードに複数の調達方式が
+# 併記される場合（全体の約4割）、以前は代表1方式のみに集約していたが、
+# 図-4（19c、利用目的）と同じ「資源分母・不互斥」方式に変更した。
+# 該当するすべての行為類型を計上するため、1つの資源記録が複数の列に
+# またがり、行の合計は100%を超えうる（分母は展開前の資源レコード数）。
 method_type_records <- resource_df %>%
   filter(!is.na(method_type)) %>%
+  separate_rows(method_type, sep = "\\|") %>%
   mutate(method_type = factor(method_type, levels = METHOD_TYPE_ORDER))
 
 taxon_method_order <- intersect(rev(levels(order_taxon(method_type_records$resource_taxon))),
                                  unique(method_type_records$resource_taxon))
 
-# 【2026-09-08改訂】x軸（coord_flip前はy軸）を0-100%に限定するため、
-# 記録数はバー右の余白ではなく行ラベルに埋め込む（図17b・19cと同じ方式）。
-# 【2026-09-15改訂】％計算の分母（n_total＝資源記録数）と、行ラベルに
-# 表示する数字は別物とする。行ラベルは全図共通のplant_fes_denom（＝
-# 図-1のraw_n）を表示し、％の分母には従来通り資源記録数（n_total）を
-# 使う。
-# 【2026-09-15再改訂】ラベルの祭り数はこの図の対象範囲（method_typeが
-# 分類できた記録）だけで数え直すのではなく、常に図-1と同じ数字にする
-# （例：ある祭りの唯一の記録が「調達方法不明」でこの図の対象から漏れて
-# いても、図-1ではその祭りをこの植物の使用祭りとして数えているため、
-# ラベルの祭り数は図-1に揃える）。
-taxon_n_23c <- method_type_records %>%
-  filter(resource_taxon %in% taxon_method_order) %>%
+# 分母：展開前の資源レコード数（1レコードが複数方式を持っていても1件と数える）。
+taxon_n_23c <- resource_df %>%
+  filter(!is.na(method_type), resource_taxon %in% taxon_method_order) %>%
+  distinct(festival, resource_raw, resource_taxon) %>%
   count(resource_taxon, name = "n_total")
 
+# 行ラベルの括弧内の数字と％計算の分母は別基準にする（図-1・図-5・図-7と
+# 同じ方針）。ラベルは全図共通のplant_fes_denom（＝図-1のraw_n、祭り数）を
+# 表示し、％の分母には資源レコード数（n_total）を使う。
 taxon_label_order_23c <- taxon_n_23c %>%
   left_join(plant_fes_denom, by = "resource_taxon") %>%
   mutate(resource_taxon = factor(resource_taxon, levels = taxon_method_order)) %>%
   arrange(resource_taxon) %>%
-  mutate(taxon_label = paste0(resource_taxon, "（n=", n_fes, "）")) %>%
+  mutate(taxon_label = paste0(resource_taxon, "（", n_fes, "）")) %>%
   pull(taxon_label)
 
-method_type_long <- method_type_records %>%
-  count(resource_taxon, method_type, .drop = FALSE) %>%
-  filter(resource_taxon %in% taxon_method_order) %>%
+# 【2026-09-16改訂】図-5左図と同じ方式：植物×行為類型の全組み合わせを
+# expand_grid()で用意し、値がない組み合わせは0%として埋める（ヒートマップ
+# 化に伴い、セルが1つも無い行・列が発生しないようにする）。
+method_type_grid <- expand_grid(
+  resource_taxon = taxon_method_order,
+  method_type     = factor(METHOD_TYPE_ORDER, levels = METHOD_TYPE_ORDER)
+) %>%
+  left_join(method_type_records %>% count(resource_taxon, method_type, name = "n"),
+            by = c("resource_taxon", "method_type")) %>%
+  mutate(n = ifelse(is.na(n), 0, n)) %>%
   left_join(taxon_n_23c, by = "resource_taxon") %>%
   left_join(plant_fes_denom, by = "resource_taxon") %>%
   mutate(pct = n / n_total,
-         taxon_label = factor(paste0(resource_taxon, "（n=", n_fes, "）"),
+         resource_taxon = factor(resource_taxon, levels = taxon_method_order),
+         taxon_label = factor(paste0(resource_taxon, "（", n_fes, "）"),
                               levels = taxon_label_order_23c))
 
-cat("\n=== 調達方式（植物別、行為類型）===\n")
-print(as.data.frame(method_type_long %>% filter(n > 0) %>%
-  arrange(resource_taxon, desc(pct)) %>%
-  select(resource_taxon, method_type, n, pct)))
+method_type_long <- method_type_grid %>% filter(n > 0)
 
-p23c <- ggplot(method_type_long, aes(x = taxon_label, y = pct, fill = method_type)) +
-  # position_stack(reverse=TRUE)：デフォルトだと積み上げ順が凡例の並び
-  # （①→⑤）と逆になるため、バー内の並びを凡例と一致させる。
-  geom_col(position = position_stack(reverse = TRUE), width = 0.7) +
-  coord_flip() +
-  scale_fill_manual(values = METHOD_TYPE_PAL, name = "調達方式（行為類型）", drop = FALSE) +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1), expand = c(0, 0)) +
+cat("\n=== 調達方式（植物別、行為類型、資源分母・不互斥）===\n")
+print(as.data.frame(method_type_long %>%
+  arrange(resource_taxon, desc(pct)) %>%
+  select(resource_taxon, method_type, n, n_total, pct)))
+
+p23c <- ggplot(method_type_grid, aes(x = method_type, y = taxon_label)) +
+  geom_tile(aes(fill = ifelse(pct > 0, pct, NA)), color = "gray75", linewidth = 0.35) +
+  geom_text(aes(label = ifelse(pct > 0, scales::percent(pct, accuracy = 1, suffix = ""), "")),
+            size = 2.9, family = "HiraginoSans-W3",
+            color = ifelse(method_type_grid$pct > 0.5, "white", "gray20")) +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08519C", na.value = "white",
+                      limits = c(0, 1), labels = scales::percent, name = "割合") +
   labs(
     title = "調達方式の内訳（植物別、行為類型）",
     subtitle = paste0("図16・図23a/23bの3段階嵌入度（自給↔購入）とは別の軸\n",
                       "採取・栽培・提供／奉納・購入・委託の5類型（結果4のカテゴリーを再分類）\n",
+                      "分母＝資源レコード数（展開前）。1記録が複数方式を持つ場合は両方に計上のため行合計は100%を超えうる\n",
                       "「現行調達なし」「調達方法不明」のレコードは対象外。府県ウェイトなし。行はTAXON_ORDER順"),
-    x = NULL, y = "植物資源レコードの割合"
+    x = NULL, y = NULL
   ) +
   theme_bw(base_family = "HiraginoSans-W3") +
-  theme(plot.title = element_text(face = "bold"), legend.position = "bottom")
+  theme(plot.title = element_text(face = "bold"), panel.grid = element_blank())
 
 ggsave(file.path(OUTPUT_DIR, "23c_method_type_by_plant.png"), p23c,
-       width = 9.5, height = max(6, n_distinct(method_type_long$taxon_label) * 0.34), dpi = 150)
+       width = 7, height = max(6, n_distinct(method_type_grid$taxon_label) * 0.28), dpi = 150)
 
-write.csv(method_type_long %>% filter(n > 0) %>%
+write.csv(method_type_long %>%
             arrange(desc(n_total), resource_taxon) %>%
             select(resource_taxon, method_type, n, n_total, pct),
           file.path(OUTPUT_DIR, "method_type_by_plant.csv"),
